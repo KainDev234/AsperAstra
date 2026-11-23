@@ -40,6 +40,9 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
 - Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen. Der Stand von `main`
   ist außerdem über GitHub Pages spielbar: https://kaindev234.github.io/AsperAstra/
 - Tests: `node tools/test.mjs` (ohne Abhängigkeiten; Attrappen für `localStorage` und DOM).
+- **Nach jeder Änderung an `js/` oder `css/`: `node tools/version.mjs`.** Es schreibt die Prüfsummen als `?v=` in die
+  `index.html` (Import-Map, Stylesheet, Hauptskript), damit kein Browser alte und neue Dateien mischt (#15).
+  Der Test „Versionen“ schlägt fehl, wenn das vergessen wurde.
 - Bot: `node tools/bot.mjs [Seeds] [Jahre]` misst den Spielfluss (Entscheidungen je Jahr, Leerlauf, Lager zu
   Einkommen, Auslastung, Ausbreitung, Ertragslatenz). Sein Spieler steht in `js/bot.js` und nutzt nur
   Spielerbefehle. Gemessen wird Spielfluss, nicht Gewinnquote; Zielwerte in #6.
