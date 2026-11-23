@@ -414,6 +414,36 @@ test('Prüfung: Kern-Felder – Verweise, Plätze, Kopien, Front', () => {
   for (const f of bad) { const d = clone(ok); f(d); assert.equal(sv.validate(d), false, f.toString()); }
 });
 
+// ---------- Bot und Testspielstände (#9) ----------
+const BOT = await import(new URL('bot.js', js));
+const SC = await import(new URL('scenarios.js', js));
+
+test('Bot: entscheidet nur über Spielerbefehle, breitet sich aus, Stand bleibt gültig', () => {
+  sim.newGame(31); const kinds = {};
+  const bot = BOT.createBot(k => { kinds[k] = (kinds[k] || 0) + 1; });
+  for (let i = 0; i < 12 * 120; i++) { bot(); sim.step(1 / 12); }
+  assert.ok(kinds.build > 5 && kinds.probe >= 1 && kinds.launch >= 1, JSON.stringify(kinds));
+  assert.ok(st.S.sys.length >= 2);
+  assert.ok(sv.validate(clone(st.S)));
+});
+
+test('Testspielstände: erreichen ihre Lage, immer gleich, gültig, auf Pause', () => {
+  for (const [k, sc] of Object.entries(SC.SCENARIOS)) {
+    assert.ok(SC.loadScenario(k), k);
+    const S = st.S, a = JSON.stringify(S);
+    assert.equal(S.seed, SC.SCENARIO_SEED); assert.equal(S.speed, 0);
+    assert.ok(sv.validate(clone(S)), k);
+    if (k !== 'overflow') assert.ok(sc.done(), k + ': Lage erreicht');
+    SC.loadScenario(k); assert.equal(JSON.stringify(st.S), a, k + ': deterministisch');
+  }
+  SC.loadScenario('start'); assert.equal(st.S.year, D.START_YEAR);
+  SC.loadScenario('overflow'); assert.ok(Math.abs(st.S.year - D.START_YEAR - 150) < 1e-6);
+  SC.loadScenario('fronts');
+  const f = st.S.rep.find(r => r.s !== 0 && sim.sysOf(r.s).b.some(b => b.k === 'sender'));
+  assert.equal(sim.jump(f.s), '', 'Sprung möglich');
+  assert.equal(SC.loadScenario('__proto__'), false);
+});
+
 // ---------- Oberfläche ----------
 test('Oberfläche: Statusleiste, Aktionen, neues Spiel erst nach Nachfrage', () => {
   store.clear(); sim.newGame(12);
@@ -433,8 +463,14 @@ test('Oberfläche: Statusleiste, Aktionen, neues Spiel erst nach Nachfrage', () 
   ui.act('new');
   assert.equal(st.S.seed, 777);
   assert.ok(store.get(D.SAVE_KEY), 'sofort gespeichert');
+  // Testspielstand: ebenfalls erst nach Nachfrage; eine andere Aktion dazwischen hebt die Nachfrage auf
+  ui.act('scen:probe'); ui.act('speed:1'); ui.act('scen:probe');
+  assert.equal(st.S.seed, 777, 'Nachfrage aufgehoben');
+  ui.act('scen:probe');
+  assert.equal(st.S.seed, SC.SCENARIO_SEED); assert.ok(st.S.probes.length);
+  assert.ok(q('#panel').innerHTML.includes('Erste Sonde'));
   ui.importFile('{kaputt');
-  assert.equal(st.S.seed, 777);
+  assert.equal(st.S.seed, SC.SCENARIO_SEED, 'kaputte Datei ändert nichts');
 });
 
 // ---------- Server ----------

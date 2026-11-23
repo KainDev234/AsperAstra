@@ -11,6 +11,7 @@ import { $, esc, fmtDate, seedFromText } from './util.js';
 import { newGame, log } from './sim.js';
 import { setSpeed, cycleTempo } from './clock.js';
 import { save, exportFile, importText, hasBackup, exportBackup, deleteBackup } from './save.js';
+import { SCENARIOS, loadScenario } from './scenarios.js';
 
 /** Wie viele Logbuch-Einträge das Panel zeigt (neueste zuerst). */
 const LOG_SHOWN = 20;
@@ -33,23 +34,23 @@ export function toast(text) {
 /**
  * Führt eine Aktion aus (aus data-a eines Knopfs).
  *   speed:0 / speed:1 = Pause / Laufen, tempo = nächste Tempostufe,
- *   new = neues Spiel (zweimal tippen: der erste Tipp fragt nach), export / import = Datei speichern / laden,
+ *   new = neues Spiel, scen:<k> = Testspielstand k (#9); beide ersetzen das Spiel und fragen deshalb erst nach
+ *   (zweimal tippen), export / import = Datei speichern / laden,
  *   backup:export / backup:delete = gesicherten alten Autosave herunterladen / verwerfen.
  */
 export function act(a) {
-  if (a !== 'new') UI.confirmNew = false;
+  const replaces = a === 'new' || a.startsWith('scen:');
+  if (replaces && UI.confirm !== a) { UI.confirm = a; renderUI(true); return; }   // erster Tipp: nachfragen
+  UI.confirm = null;
   if (a === 'speed:0' || a === 'speed:1') setSpeed(+a.slice(6));
   else if (a === 'tempo') cycleTempo();
   else if (a === 'new') {
-    if (!UI.confirmNew) { UI.confirmNew = true; }
-    else {
-      UI.confirmNew = false;
-      const field = $('#seed');
-      newGame(seedFromText(field.value || ''));
-      field.value = '';
-      save();
-    }
+    const field = $('#seed');
+    newGame(seedFromText(field.value || ''));
+    field.value = '';
+    save();
   }
+  else if (a.startsWith('scen:')) { if (loadScenario(a.slice(5))) save(); }
   else if (a === 'export') exportFile();
   else if (a === 'import') $('#importFile').click();
   else if (a === 'backup:export') exportBackup();
@@ -79,18 +80,24 @@ export function renderUI(force) {
   $('#play').classList.toggle('on', S.speed === 1);
 
   const last = S.log[S.log.length - 1];
-  const key = [S.seed, S.log.length, last && last.t, last && last.y, UI.confirmNew, hasBackup()].join('|');
+  const key = [S.seed, S.log.length, last && last.t, last && last.y, UI.confirm, hasBackup()].join('|');
   if (!force && key === panelKey) return;
   panelKey = key;
   $('#panel').innerHTML = panelHtml();
 }
 
+/** Knopf für eine Aktion, die das laufende Spiel ersetzt: nach dem ersten Tipp fragt er nach. */
+const replaceButton = (a, text) => `<button data-a="${a}" class="${UI.confirm === a ? 'warn' : ''}">${UI.confirm === a ? 'Sicher? Nochmal' : esc(text)}</button>`;
+
 /** HTML des Panels „Spiel“. */
 function panelHtml() {
   let h = `<div class="hd">Spiel <span class="dim">Seed ${S.seed}</span></div>`;
   h += `<div class="row"><input id="seed" placeholder="Seed (leer = zufällig)" autocomplete="off">`
-    + `<button data-a="new" class="${UI.confirmNew ? 'warn' : ''}">${UI.confirmNew ? 'Sicher? Nochmal' : 'Neues Spiel'}</button></div>`;
+    + replaceButton('new', 'Neues Spiel') + '</div>';
   h += `<div class="row"><button data-a="export">Datei speichern</button><button data-a="import">Datei laden</button></div>`;
+  // Testspielstände (#9): fertige Lagen aus festem Seed
+  h += '<div class="row"><span class="dim">Testspielstand</span></div><div class="row">'
+    + Object.entries(SCENARIOS).map(([k, sc]) => replaceButton('scen:' + k, sc.n)).join('') + '</div>';
   if (hasBackup()) {
     h += `<div class="row"><span class="dim">Alter Spielstand gesichert</span>`
       + `<button data-a="backup:export">Herunterladen</button><button data-a="backup:delete">Verwerfen</button></div>`;
