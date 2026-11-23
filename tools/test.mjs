@@ -547,6 +547,77 @@ test('Sicht (#13): Sonden erst sichtbar, wenn das Licht vom Start da ist', () =>
   assert.ok(Math.abs(p.x - (t.x + (to.x - t.x) * Math.min(1, f))) < 1e-9);
 });
 
+// ---------- Bauen über die Oberfläche (#13, Teil 2) ----------
+const OU = await import(new URL('ortui.js', js));
+
+test('Ortsstufe: nur an der aktiven Front, Karte ohne Schrift, Bauknöpfe mit Gründen, Ausbau und Abriss', () => {
+  store.clear(); sim.newGame(21); ui.restart();
+  const S = st.S, U2 = st.UI, q = s => document.querySelector(s), sol = sim.sysOf(0);
+  ui.act('front'); ui.act('ort:0');
+  assert.equal(U2.level, 'ort'); assert.equal(U2.sheet, 'ort');
+  assert.ok(!q('#map').innerHTML.includes('<text'));
+  let h = q('#sheet').innerHTML;
+  assert.ok(h.includes('Kraftwerk') && h.includes('Sender'), 'Gebäude der Station');
+  assert.match(h, /data-a="b:mine" disabled>.*nicht hier/, 'Mine an der Station gesperrt, mit Grund');
+  // Sender bauen: die Sonde steht auf der Erde, sie reist erst hin
+  ui.act('b:sender');
+  const me = S.units[0];
+  assert.deepEqual(me.q.map(i => i.a), ['move', 'build']);
+  for (let i = 0; i < 24 && !sol.b.some(b => b.k === 'sender'); i++) sim.step(1 / 12);
+  assert.ok(sol.b.some(b => b.k === 'sender' && b.o === 0));
+  ui.renderUI(true); h = q('#sheet').innerHTML;
+  assert.match(h, /data-a="b:power" disabled>.*kein Platz/, 'Station voll');
+  // Ausbau des Kraftwerks, Abriss erst nach Nachfrage
+  sol.m = 100; ui.act('up:power'); untilIdle(24);
+  assert.ok(sol.b.some(b => b.k === 'power' && b.lv === 2));
+  const n = sol.b.length;
+  ui.act('raze:sender'); assert.equal(me.q.length, 0, 'erster Tipp fragt nach');
+  assert.ok(q('#sheet').innerHTML.includes('Sicher?'));
+  ui.act('raze:sender'); sim.step(1 / 12);
+  assert.equal(sol.b.length, n - 1);
+  // ferne Systeme haben keine Ortsstufe
+  U2.sys = 5; ui.act('ort:1'); assert.equal(U2.ort, 0, 'unverändert');
+  ui.act('out'); ui.act('out'); assert.equal(U2.level, 'galaxy');
+});
+
+test('Bauer: Wahl nach Ort und Warteschlange, Konstruktor, Ausbau durch zweiten Bauer, Auftrag entfernen', () => {
+  store.clear(); sim.newGame(22); ui.restart();
+  const S = st.S, U2 = st.UI, sol = sim.sysOf(0); sol.m = 300;
+  ui.act('front'); ui.act('ort:' + D.EARTH);
+  ui.act('cons'); untilIdle();
+  const c = S.units.find(u => u.k === 'cons');
+  assert.ok(c && c.o === D.EARTH);
+  // zwei Aufträge an der Erde: verteilt auf beide Bauer dort
+  ui.act('b:mine'); ui.act('b:mine');
+  assert.equal(S.units[0].q.length + c.q.length, 2);
+  assert.ok(S.units[0].q.length === 1 && c.q.length === 1, 'kürzeste Warteschlange zuerst');
+  untilIdle();
+  // Auftrag wieder entfernen
+  ui.act('b:mine'); const u = S.units.find(x => x.q.length);
+  ui.act('unq:' + u.id + ':0'); assert.equal(u.q.length, 0);
+  // Konstruktor ausbauen übernimmt die Sonde am selben Ort
+  ui.act('consup:' + c.id); untilIdle();
+  assert.equal(c.lv, 2);
+  // Bauer herschicken: in den Gürtel
+  ui.act('out'); ui.act('ort:5'); ui.act('send');
+  assert.ok(S.units.some(x => x.q.some(i => i.a === 'move' && i.o === 5)));
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Werftleiste: Sonde in Auftrag, Fortschritt, bereit', () => {
+  store.clear(); sim.newGame(23); ui.restart();
+  const S = st.S, q = s => document.querySelector(s), sol = sim.sysOf(0); sol.m = 200;
+  ui.act('front'); ui.renderUI(true);
+  assert.ok(!q('#head').innerHTML.includes('data-a="probe"'), 'ohne Werft keine Leiste');
+  sol.b.push({ k: 'werft', o: 4, lv: 1 }); ui.renderUI(true);
+  assert.ok(q('#head').innerHTML.includes('data-a="probe"'));
+  ui.act('probe'); assert.equal(sol.pq, 1);
+  for (let i = 0; i < 6; i++) sim.step(1 / 12);
+  ui.renderUI(true); assert.match(q('#head').innerHTML, /im Bau · [0-9]+ %/);
+  for (let i = 0; i < 12 && !sol.ready; i++) sim.step(1 / 12);
+  ui.renderUI(true); assert.ok(q('#head').innerHTML.includes('1 bereit'));
+});
+
 // ---------- Versionsangaben (#15) ----------
 test('Versionen: index.html nennt für Stylesheet und jedes Modul die aktuelle Prüfsumme (sonst: node tools/version.mjs)', async () => {
   const VS = await import(new URL('../tools/version.mjs', js));
