@@ -25,5 +25,8 @@ export let S = null;
 /** Ersetzt den Spielstand (neues Spiel oder geladener Stand). */
 export function setState(s) { S = s; }
 
-/** Reiner Oberflächenzustand, wird nicht gespeichert. Noch leer; Ansichten kommen mit Phase 3. */
-export const UI = {};
+/**
+ * Reiner Oberflächenzustand, wird nicht gespeichert:
+ *   confirm = Aktion, die nach dem ersten Tipp auf Bestätigung wartet ('new' oder 'scen:<k>'), sonst null.
+ */
+export const UI = { confirm: null };

@@ -34,6 +34,10 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
 ## Starten & Testen
 - Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen.
 - Tests: `node tools/test.mjs` (ohne Abhängigkeiten; Attrappen für `localStorage` und DOM).
+- Bot: `node tools/bot.mjs [Seeds] [Jahre]` misst den Spielfluss (Entscheidungen je Jahr, Leerlauf, Lager zu
+  Einkommen, Auslastung, Ausbreitung, Ertragslatenz). Sein Spieler steht in `js/bot.js` und nutzt nur
+  Spielerbefehle. Gemessen wird Spielfluss, nicht Gewinnquote; Zielwerte in #6.
+- Testspielstände (`js/scenarios.js`): im Panel „Spiel“ ladbar, aus festem Seed vom Bot erzeugt (deterministisch).
 
 ## Arbeitsweise (vom Projektinhaber festgelegt)
 - **Neue Mechaniken und Ideen erst diskutieren, dann umsetzen.** Auch bei Lösungen für ein bereits besprochenes

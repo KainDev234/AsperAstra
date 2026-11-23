@@ -362,25 +362,26 @@ const countK = (sys, k) => sys.b.filter(b => b.k === k).length
 /**
  * Feste Regel einer fernen Front (#6): 1. Mine am besten Ort, 2. Sender, 3. Wirtschaft bis zur Reproduktion
  * (Kraftwerke nach Bedarf, Minen, Werft), 4. Minen ausbauen. Vor jedem Verbraucher sorgt sie für genug
- * Energie. Füllt die Warteschlange der Kopie, wenn sie nichts zu tun hat.
+ * Energie. Liefert die nächsten Aufträge für Bauer u (leer = nichts mehr zu tun), ohne etwas zu ändern: Ferne
+ * Fronten hängen sie an die Warteschlange der Kopie, der Bot gibt sie als Befehle (tools/bot.mjs).
+ * @returns {object[]} Aufträge, z. B. [{ a: 'move', o: 5 }, { a: 'build', k: 'mine' }]
  */
-function planFront(sys, u) {
+export function frontPlan(sys, u) {
   const want = k => {
     const e = energy(sys);
     if (BUILD[k].need && e.gen < e.need + BUILD[k].need && k !== 'power' && bestOrt(sys, 'power') >= 0) k = 'power';
     const o = bestOrt(sys, k);
-    if (o < 0) return false;
-    if (o !== u.o) u.q.push({ a: 'move', o });
-    u.q.push({ a: 'build', k });
-    return true;
+    if (o < 0) return null;
+    return [...(o !== u.o ? [{ a: 'move', o }] : []), { a: 'build', k }];
   };
-  if (!countK(sys, 'mine') && want('mine')) return;
-  if (!countK(sys, 'sender') && want('sender')) return;
-  if (countK(sys, 'mine') < 3 && want('mine')) return;
-  if (!countK(sys, 'werft') && want('werft')) return;
-  if (countK(sys, 'mine') < 5 && want('mine')) return;
+  let p;
+  if (!countK(sys, 'mine') && (p = want('mine'))) return p;
+  if (!countK(sys, 'sender') && (p = want('sender'))) return p;
+  if (countK(sys, 'mine') < 3 && (p = want('mine'))) return p;
+  if (!countK(sys, 'werft') && (p = want('werft'))) return p;
+  if (countK(sys, 'mine') < 5 && (p = want('mine'))) return p;
   const b = sys.b.find(x => x.k === 'mine' && x.lv === 1);
-  if (b) { if (b.o !== u.o) u.q.push({ a: 'move', o: b.o }); u.q.push({ a: 'up', k: 'mine' }); }
+  return b ? [...(b.o !== u.o ? [{ a: 'move', o: b.o }] : []), { a: 'up', k: 'mine' }] : [];
 }
 
 /** Ferne Front: Sonde in Auftrag geben, sobald Werft und Materie da sind; fertige Sonden zum nächsten freien Stern. */
@@ -466,7 +467,7 @@ export function step(dt) {
   for (const u of [...S.units]) {
     if (!S.units.includes(u)) continue;   // im selben Schritt abgerissen
     const sys = sysOf(u.s);
-    if (u.k === 'copy' && u.s !== S.me && !u.q.length && !u.job && !u.mv) planFront(sys, u);
+    if (u.k === 'copy' && u.s !== S.me && !u.q.length && !u.job && !u.mv) u.q.push(...frontPlan(sys, u));
     stepUnit(u, sys, dt);
   }
   for (const sys of S.sys) if (sys.s !== S.me) frontProbes(sys);

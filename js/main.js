@@ -7,6 +7,7 @@
  *   ui.js    → Oberfläche und Aktionen   save.js  → localStorage, Prüfung fremder Stände
  *   clock.js → Zeitsteuerung (ohne DOM)  sim.js   → Spiellogik (ohne DOM)
  *   data.js  → Tabellen und Konstanten   state.js → gemeinsamer Zustand   util.js → Hilfsfunktionen
+ *   galaxy.js → Galaxie aus dem Seed     scenarios.js → Testspielstände (über bot.js, den Spieler des Bots)
  */
 import { S } from './state.js';
 import { newGame, hooks, log } from './sim.js';
