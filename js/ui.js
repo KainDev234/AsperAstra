@@ -1,25 +1,33 @@
 /**
- * ui.js – Oberfläche des Grundgerüsts: Statusleiste mit Zeitsteuerung, ein Panel „Spiel“ (Seed, neues
- * Spiel, Datei speichern/laden, Logbuch) und Kurzmeldungen. Die Spielansichten kommen ab Phase 3.
+ * ui.js – Oberfläche (#13): Statusleiste mit Zeitsteuerung (Pause, Laufen, Tempo-Schieberegler), die zoombare
+ * Karte (map.js), eine feste Bedienleiste unten (Herauszoomen, Zur Front, Fronten), die Kopfzeile der Systemstufe
+ * und Blätter von unten (Stern, Fronten, Spiel). Kurzmeldungen bei Halten.
  *
- * Aktionen stehen als data-a="…" an den Knöpfen und laufen über act() – so sind sie auch ohne Browser
- * (Tests) auslösbar.
+ * Aktionen stehen als data-a="…" an den Knöpfen und laufen über act() – so sind sie auch ohne Browser (Tests)
+ * auslösbar. Angezeigt wird nur, was der Spieler weiß (view.js).
  */
 import { S, UI } from './state.js';
-import { TEMPO } from './data.js';
-import { $, esc, fmtDate, seedFromText } from './util.js';
-import { newGame, log } from './sim.js';
-import { setSpeed, cycleTempo } from './clock.js';
+import { TEMPO, CLASSES, ORTE, PROBE, BUILD } from './data.js';
+import { $, esc, fmtDate, seedFromText, dist } from './util.js';
+import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, targetFree } from './sim.js';
+import { setSpeed, setTempo } from './clock.js';
 import { save, exportFile, importText, hasBackup, exportBackup, deleteBackup } from './save.js';
 import { SCENARIOS, loadScenario } from './scenarios.js';
+import { renderMap, centerOn, zoomAt, mapSize } from './map.js';
+import { viewer, isKnown, isLive, reportOf, frontList } from './view.js';
+import { ico } from './icons.js';
 
-/** Wie viele Logbuch-Einträge das Panel zeigt (neueste zuerst). */
-const LOG_SHOWN = 20;
+/** Wie viele Logbuch-Einträge das Blatt „Spiel“ zeigt (neueste zuerst). */
+const LOG_SHOWN = 30;
 /** Texte zu den Ergebnissen beim Laden einer Datei. */
 const LOAD_TEXT = {
   ok: 'Spielstand geladen.', outdated: 'Spielstand ist zu alt für diese Version.',
   newer: 'Spielstand stammt aus einer neueren Version.', invalid: 'Datei ist kein gültiger Spielstand.',
 };
+/** Besonderheiten eines Systems (Fund) in Kurzform. */
+const SPECIAL = { richBelt: 'reicher Gürtel', gasPower: 'Gasriese +Energie' };
+/** Gebäudearten in fester Anzeigereihenfolge. */
+const KINDS = Object.keys(BUILD);
 
 /** Zeigt eine Kurzmeldung für ein paar Sekunden. */
 let toastTimer = 0;
@@ -31,26 +39,52 @@ export function toast(text) {
   toastTimer = setTimeout(() => { el.style.opacity = 0; }, 2800);
 }
 
+// ---------- Navigation auf der Karte ----------
+
+/** Tipp auf einen Stern der Galaxie (null = ins Leere): wählt ihn und zeigt das Sternblatt bzw. schließt es. */
+export function tapStar(s) {
+  UI.sel = s;
+  UI.sheet = s === null ? null : 'star';
+  renderUI(true);
+}
+
+/** Öffnet die Systemstufe von Stern s. */
+export function openSystem(s) {
+  UI.level = 'system'; UI.sys = s; UI.sel = s; UI.sheet = null;
+  centerOn(s);
+  renderUI(true);
+}
+
+/** Stern, an dem der Spieler gerade ist (aktive Front bzw. Sprungziel). */
+const home = () => S.me !== null ? S.me : S.jump.to;
+
 /**
  * Führt eine Aktion aus (aus data-a eines Knopfs).
- *   speed:0 / speed:1 = Pause / Laufen, tempo = nächste Tempostufe,
- *   new = neues Spiel, scen:<k> = Testspielstand k (#9); beide ersetzen das Spiel und fragen deshalb erst nach
- *   (zweimal tippen), export / import = Datei speichern / laden,
- *   backup:export / backup:delete = gesicherten alten Autosave herunterladen / verwerfen.
+ *   speed:0 / speed:1 = Pause / Laufen; out = eine Stufe heraus bzw. weiter herauszoomen; front = Systemstufe der
+ *   aktiven Front; fronts = Schnellsuche; game = Blatt „Spiel“; close = Blatt schließen; sys:<s> = Systemstufe
+ *   von Stern s; new = neues Spiel, scen:<k> = Testspielstand (beide fragen erst nach: zweimal tippen);
+ *   export / import = Datei speichern / laden; backup:export / backup:delete = alten Autosave sichern / verwerfen.
  */
 export function act(a) {
   const replaces = a === 'new' || a.startsWith('scen:');
   if (replaces && UI.confirm !== a) { UI.confirm = a; renderUI(true); return; }   // erster Tipp: nachfragen
   UI.confirm = null;
   if (a === 'speed:0' || a === 'speed:1') setSpeed(+a.slice(6));
-  else if (a === 'tempo') cycleTempo();
+  else if (a === 'out') {
+    if (UI.level === 'system') { UI.level = 'galaxy'; centerOn(UI.sys); }
+    else { const { W, H } = mapSize(); zoomAt(.5, W / 2, H / 2); }
+  }
+  else if (a === 'front') { openSystem(home()); return; }
+  else if (a === 'fronts' || a === 'game') UI.sheet = UI.sheet === a ? null : a;
+  else if (a === 'close') { UI.sheet = null; if (UI.level === 'galaxy') UI.sel = null; }
+  else if (a.startsWith('sys:')) { openSystem(+a.slice(4)); return; }
   else if (a === 'new') {
     const field = $('#seed');
     newGame(seedFromText(field.value || ''));
     field.value = '';
-    save();
+    restart();
   }
-  else if (a.startsWith('scen:')) { if (loadScenario(a.slice(5))) save(); }
+  else if (a.startsWith('scen:')) { if (loadScenario(a.slice(5))) restart(); }
   else if (a === 'export') exportFile();
   else if (a === 'import') $('#importFile').click();
   else if (a === 'backup:export') exportBackup();
@@ -58,44 +92,117 @@ export function act(a) {
   renderUI(true);
 }
 
+/** Nach neuem oder geladenem Spiel: speichern, Karte auf die Front, Blätter zu. */
+export function restart() {
+  save();
+  UI.level = 'galaxy'; UI.sel = null; UI.sheet = null;
+  const { W, H } = mapSize();
+  centerOn(home(), Math.min(W, H) / 30);
+}
+
 /** Übernimmt eine gewählte Datei als Spielstand und meldet das Ergebnis. */
 export function importFile(text) {
   const r = importText(text);
   toast(LOAD_TEXT[r]);
-  if (r === 'ok') log('Spielstand aus Datei geladen.');
+  if (r === 'ok') { log('Spielstand aus Datei geladen.'); restart(); }
   renderUI(true);
 }
 
-/** Merkt sich, was das Panel zuletzt gezeigt hat, damit es nur bei Änderungen neu entsteht. */
-let panelKey = '';
+// ---------- Darstellung ----------
+
+/** Merker, damit Karte und Blätter nur bei Änderungen neu entstehen. */
+let mapKey = '', sheetKey = '';
 
 /**
- * Aktualisiert die Oberfläche. Die Statusleiste jedes Mal (billig), das Panel nur bei Änderungen oder
- * mit force (nach Aktionen).
+ * Aktualisiert die Oberfläche: Statusleiste jedes Mal (billig); Karte, Kopfzeile und Blatt nur bei Änderungen
+ * (Monatswechsel, Kamera, Auswahl) oder mit force (nach Aktionen).
  */
 export function renderUI(force) {
   $('#tYear').textContent = fmtDate(S.year);
   $('#tTempo').textContent = TEMPO[S.tempo.n].n;
+  const sl = $('#tempo');
+  sl.max = String(TEMPO.length - 1);
+  if (document.activeElement !== sl) sl.value = String(S.tempo.n);
   $('#pause').classList.toggle('on', S.speed === 0);
   $('#play').classList.toggle('on', S.speed === 1);
 
+  const month = Math.floor(S.year * 12 + 1e-6);
+  const mk = [month, UI.level, UI.sys, UI.sel, UI.cam.x, UI.cam.y, UI.cam.z, S.me].join('|');
+  if (force || UI.dirty || mk !== mapKey) { mapKey = mk; UI.dirty = false; renderMap(); }
+
   const last = S.log[S.log.length - 1];
-  const key = [S.seed, S.log.length, last && last.t, last && last.y, UI.confirm, hasBackup()].join('|');
-  if (!force && key === panelKey) return;
-  panelKey = key;
-  $('#panel').innerHTML = panelHtml();
+  const sk = [month, UI.level, UI.sys, UI.sel, UI.sheet, UI.confirm, S.seed, S.log.length, last && last.t, hasBackup()].join('|');
+  if (!force && sk === sheetKey) return;
+  sheetKey = sk;
+  const head = $('#head');
+  head.innerHTML = UI.level === 'system' ? headHtml(UI.sys) : '';
+  head.classList.toggle('show', UI.level === 'system');
+  const sheet = $('#sheet');
+  sheet.innerHTML = UI.sheet === 'star' && UI.sel !== null ? starHtml(UI.sel) : UI.sheet === 'fronts' ? frontsHtml() : UI.sheet === 'game' ? gameHtml() : '';
+  sheet.classList.toggle('show', !!UI.sheet);
+  $('#btnFronts').classList.toggle('on', UI.sheet === 'fronts');
+  $('#btnGame').classList.toggle('on', UI.sheet === 'game');
+}
+
+/** Gebäude je Art als Piktogramm mit Zahl. */
+const countsHtml = c => KINDS.filter(k => c[k]).map(k => `<span class="cnt">${ico(k)}${c[k]}</span>`).join('') || '<span class="dim">–</span>';
+
+/** Kopfzeile der Systemstufe: live Lager, Einkommen, Energie; fern der letzte Bericht mit Alter. */
+function headHtml(s) {
+  const st = star(s);
+  let h = `<b>${esc(st.name)}</b>`;
+  if (isLive(s)) {
+    const sys = sysOf(s), e = energy(sys);
+    h += ` <span>${Math.floor(sys.m)} M</span> <span class="dim">+${income(sys, e.f).toFixed(1)}/J</span>`
+      + ` <span class="${e.f < 1 ? 'warn' : ''}">${ico('power')}${e.gen}/${e.need}</span>`;
+  } else {
+    const r = reportOf(s);
+    h += r ? ` <span class="dim">vor ${Math.round(S.year - r.y)} J</span> <span>${r.m} M</span> ${countsHtml(r.b)}` : ' <span class="dim">kein Bericht</span>';
+  }
+  return h;
+}
+
+/**
+ * Sternblatt: Klasse, Entfernung, Flugzeit, Treibstoff, Verlustrisiko; bei bekanntem Fund Orte, Reichtum,
+ * Besonderheit. Knopf zur Systemstufe (Sonde schicken und Springen folgen mit dem dritten PR zu #13).
+ */
+function starHtml(s) {
+  const st = star(s), v = viewer(), d = dist(st, v);
+  let h = `<div class="hd"><span style="color:${CLASSES[st.cls].c}">●</span> ${esc(st.name)} <span class="dim">${CLASSES[st.cls].n}</span><button class="x" data-a="close">×</button></div>`;
+  // Entfernung; für mögliche Sondenziele dazu Flugzeit, Treibstoff und Verlustrisiko („unterwegs“: eine Sonde fliegt hin)
+  if (s !== v.i && isKnown(s)) h += `<div class="facts"><span>${d.toFixed(1)} Lj</span></div>`;
+  else if (s !== v.i) {
+    h += `<div class="facts"><span>${d.toFixed(1)} Lj</span><span>${(d / PROBE.v).toFixed(0)} J Flug</span>`
+      + `<span>${fuelCost(v.i, s)} M</span><span>${targetFree(s) ? Math.round(launchRisk(s) * 100) + ' % Verlust' : 'Sonde unterwegs'}</span></div>`;
+  }
+  if (isKnown(s)) {
+    const n = k => st.orte.filter(o => o.k === k).length;
+    h += `<div class="facts"><span>${n('rock')} ${ORTE.rock.n}</span><span>${n('gas')} ${ORTE.gas.n}</span>${n('belt') ? `<span>${ORTE.belt.n}</span>` : ''}`
+      + `<span>Reichtum ×${st.rich}</span>${st.spec ? `<span class="good">${SPECIAL[st.spec]}</span>` : ''}</div>`;
+    h += `<div class="row"><button data-a="sys:${s}">System ›</button></div>`;
+  } else h += '<div class="facts dim"><span>Fund unbekannt</span></div>';
+  return h;
+}
+
+/** Schnellsuche „Fronten“: aktive Front, Sol, dann nach Entfernung; je Zeile „Zeigen“. */
+function frontsHtml() {
+  let h = '<div class="hd">Fronten<button class="x" data-a="close">×</button></div>';
+  for (const f of frontList()) {
+    const age = f.age === 0 ? '<span class="me">hier</span>' : f.age === null ? '<span class="dim">kein Bericht</span>' : `<span class="dim">vor ${Math.round(f.age)} J</span>`;
+    h += `<div class="front"><div><b>${esc(f.name)}</b> <span class="dim">${f.d.toFixed(1)} Lj</span> ${age}<br>${countsHtml(f.b)}</div>`
+      + `<button data-a="sys:${f.s}">Zeigen</button></div>`;
+  }
+  return h;
 }
 
 /** Knopf für eine Aktion, die das laufende Spiel ersetzt: nach dem ersten Tipp fragt er nach. */
 const replaceButton = (a, text) => `<button data-a="${a}" class="${UI.confirm === a ? 'warn' : ''}">${UI.confirm === a ? 'Sicher? Nochmal' : esc(text)}</button>`;
 
-/** HTML des Panels „Spiel“. */
-function panelHtml() {
-  let h = `<div class="hd">Spiel <span class="dim">Seed ${S.seed}</span></div>`;
-  h += `<div class="row"><input id="seed" placeholder="Seed (leer = zufällig)" autocomplete="off">`
-    + replaceButton('new', 'Neues Spiel') + '</div>';
+/** Blatt „Spiel“: Seed, neues Spiel, Datei, Testspielstände, gesicherter alter Stand, Logbuch. */
+function gameHtml() {
+  let h = `<div class="hd">Spiel <span class="dim">Seed ${S.seed}</span><button class="x" data-a="close">×</button></div>`;
+  h += `<div class="row"><input id="seed" placeholder="Seed (leer = zufällig)" autocomplete="off">${replaceButton('new', 'Neues Spiel')}</div>`;
   h += `<div class="row"><button data-a="export">Datei speichern</button><button data-a="import">Datei laden</button></div>`;
-  // Testspielstände (#9): fertige Lagen aus festem Seed
   h += '<div class="row"><span class="dim">Testspielstand</span></div><div class="row">'
     + Object.entries(SCENARIOS).map(([k, sc]) => replaceButton('scen:' + k, sc.n)).join('') + '</div>';
   if (hasBackup()) {
@@ -109,10 +216,13 @@ function panelHtml() {
   return h + '</div>';
 }
 
-// Klicks auf Knöpfe mit data-a; die Dateiauswahl liest die Datei und übernimmt sie (nur im Browser).
+// Klicks auf Knöpfe mit data-a; Schieberegler für das Tempo; Dateiauswahl (nur im Browser).
 document.addEventListener('click', e => {
   const b = e.target.closest && e.target.closest('[data-a]');
   if (b) act(b.dataset.a);
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'tempo') { setTempo(+e.target.value); renderUI(false); }
 });
 document.addEventListener('change', e => {
   if (e.target.id !== 'importFile' || !e.target.files[0]) return;

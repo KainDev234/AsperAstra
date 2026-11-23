@@ -3,8 +3,10 @@
  * Übernommen aus Replikator (js/main.js), ohne Karte.
  *
  * Modulübersicht (Abhängigkeiten zeigen nur "nach unten", keine Zyklen):
- *   main.js  → ui.js, save.js, clock.js, sim.js
+ *   main.js  → ui.js, input.js, save.js, clock.js, sim.js
  *   ui.js    → Oberfläche und Aktionen   save.js  → localStorage, Prüfung fremder Stände
+ *   map.js   → zoombare Karte (SVG)      input.js → Gesten auf der Karte   view.js → was der Spieler weiß
+ *   icons.js → Piktogramme, Ziffern als Pfade
  *   clock.js → Zeitsteuerung (ohne DOM)  sim.js   → Spiellogik (ohne DOM)
  *   data.js  → Tabellen und Konstanten   state.js → gemeinsamer Zustand   util.js → Hilfsfunktionen
  *   galaxy.js → Galaxie aus dem Seed     scenarios.js → Testspielstände (über bot.js, den Spieler des Bots)
@@ -12,7 +14,8 @@
 import { S } from './state.js';
 import { newGame, hooks, log } from './sim.js';
 import { advance } from './clock.js';
-import { renderUI, toast } from './ui.js';
+import { renderUI, toast, restart } from './ui.js';
+import './input.js';   // registriert die Gesten auf der Karte
 import { load, initAutosave, hasBackup } from './save.js';
 
 hooks.notify = toast;
@@ -55,5 +58,7 @@ if (loaded !== 'ok') {
   if (why) log(`Der letzte Spielstand ${why} – es beginnt ein neues Spiel.` + (hasBackup() ? ' Der alte Stand ist gesichert.' : ' Er konnte nicht gesichert werden.'), 'warn');
 }
 initAutosave();
+restart();   // Karte auf die aktive Front
+window.addEventListener('resize', () => renderUI(true));
 renderUI(true);
 requestAnimationFrame(frame);

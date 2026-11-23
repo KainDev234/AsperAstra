@@ -27,6 +27,9 @@ export function setState(s) { S = s; }
 
 /**
  * Reiner Oberflächenzustand, wird nicht gespeichert:
- *   confirm = Aktion, die nach dem ersten Tipp auf Bestätigung wartet ('new' oder 'scen:<k>'), sonst null.
+ *   confirm = Aktion, die nach dem ersten Tipp auf Bestätigung wartet ('new' oder 'scen:<k>'), sonst null,
+ *   level = Zoomstufe der Karte ('galaxy' | 'system'), sys = Stern der Systemstufe, sel = gewählter Stern,
+ *   sheet = offenes Blatt ('star' | 'fronts' | 'game' | null), cam = Kamera der Galaxie { x, y in Lj, z in px/Lj },
+ *   dirty = Karte im nächsten Bild neu zeichnen (nach Gesten).
  */
-export const UI = { confirm: null };
+export const UI = { confirm: null, level: 'galaxy', sys: 0, sel: null, sheet: null, cam: { x: 0, y: 0, z: 12 }, dirty: true };

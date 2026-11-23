@@ -1,29 +1,67 @@
 /* AsperAstra – Stylesheet. Layout und Farben, optimiert für Smartphones im Hochformat. Grundfarben übernommen aus Replikator. */
-/* Farbpalette: dunkler Weltraum-Hintergrund, ein Akzent-Blau, Grün für Positives, Orange für Hinweise. */
-:root{--bg:#05070d;--panel:rgba(11,15,24,.96);--line:#1d2636;--text:#cdd6e4;--dim:#6b7890;--acc:#5ec8ff;--ok:#6fe39a;--warn:#ffb85e}
+/* Farbpalette: dunkler Weltraum-Hintergrund, ein Akzent-Blau, Grün für Positives, Orange für Hinweise, Gold für dich. */
+:root{--bg:#05070d;--panel:rgba(11,15,24,.96);--line:#1d2636;--text:#cdd6e4;--dim:#6b7890;--acc:#5ec8ff;--ok:#6fe39a;--warn:#ffb85e;--me:#ffd75e;--top:52px;--bar:56px}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 /* Keine automatische Textvergrößerung mobiler Browser (Replikator #209): Sie bläst Schrift in breiten Flächen auf */
 html{-webkit-text-size-adjust:100%;-moz-text-size-adjust:100%;text-size-adjust:100%}
 /* Seite selbst scrollt nie; Textauswahl aus, damit langes Drücken nicht stört. */
 html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
-/* Statusleiste oben; env(safe-area-inset-*) berücksichtigt Notch/Kamera-Ausschnitte. */
-#top{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;display:flex;align-items:center;gap:12px;background:var(--bg);border-bottom:1px solid var(--line);z-index:2}
-#top b{font-weight:600}
-#speed{margin-left:auto;display:flex;gap:4px}
-/* Buttons mit mind. 36px Höhe, damit sie mit dem Finger gut treffbar sind. */
 button{font:inherit;color:var(--text);background:#111926;border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-height:36px;cursor:pointer}
 button:disabled{opacity:.35;cursor:default}
 button.on{border-color:var(--acc);color:var(--acc)}
 button.warn{border-color:var(--warn);color:var(--warn)}
-#speed button{padding:4px 12px;min-height:38px;font-size:15px}
-#tempoBtn{font-size:12px!important}
 input{font:inherit;color:var(--text);background:#0b0f18;border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-height:36px;flex:1;min-width:0;-webkit-user-select:text;user-select:text}
-/* Panel unter der Statusleiste, scrollt selbst */
-#panel{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 56px);overflow-y:auto;padding:12px 14px calc(env(safe-area-inset-bottom) + 16px)}
+.dim{color:var(--dim)}.ok,.good{color:var(--ok)}.warn{color:var(--warn)}.me{color:var(--me)}
+/* Piktogramme im Text (icons.ico): Höhe wie die Schrift, Farbe vom Text */
+.ico{width:1.1em;height:1.1em;vertical-align:-.2em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* Statusleiste oben (feste Breiten, damit nichts springt); env(safe-area-inset-*) für Notch/Kamera */
+#top{position:fixed;top:0;left:0;right:0;height:calc(env(safe-area-inset-top) + var(--top));padding:calc(env(safe-area-inset-top) + 8px) 8px 6px;display:flex;align-items:center;gap:8px;background:var(--bg);border-bottom:1px solid var(--line);z-index:3}
+#top b{font-weight:600;min-width:8ch}
+#speed{margin-left:auto;display:flex;gap:4px;align-items:center}
+#speed button,#btnGame{padding:4px 10px;min-height:38px;font-size:15px}
+#tempoBox{display:flex;flex-direction:column;align-items:center;width:84px}
+#tempo{width:84px;min-height:0;padding:0;margin:0;accent-color:var(--acc)}
+#tTempo{font-size:10px;color:var(--dim);white-space:nowrap}
+
+/* Kopfzeile der Systemstufe */
+#head{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top) + var(--top));padding:6px 10px;display:none;gap:10px;flex-wrap:wrap;align-items:center;background:var(--panel);border-bottom:1px solid var(--line);z-index:2;font-size:13px}
+#head.show{display:flex}
+.cnt{margin-right:8px;white-space:nowrap}
+
+/* Karte zwischen Statusleiste und Bedienleiste; touch-action:none, damit Gesten nicht den Browser scrollen */
+#map{position:fixed;left:0;right:0;top:calc(env(safe-area-inset-top) + var(--top));bottom:calc(env(safe-area-inset-bottom) + var(--bar));touch-action:none;overflow:hidden}
+.mapsvg{display:block}
+.mapsvg .route{stroke:#3a5a7a;stroke-width:1;stroke-dasharray:3 4}
+.mapsvg .probe{fill:var(--acc)}
+.mapsvg .ring{fill:none;stroke-width:1.4}
+.mapsvg .ring.dash{stroke-dasharray:3 3}
+.mapsvg .badge path,.mapsvg .digit{fill:none;stroke:#9aa6b8;stroke-width:.6;stroke-linecap:round;stroke-linejoin:round}
+.mapsvg .orbit{stroke:#1d2636;stroke-width:1}
+.mapsvg .rock{fill:#8c8f99}.mapsvg .gas{fill:#c9a27a}
+.mapsvg .slot{fill:none;stroke:#2a3550;stroke-width:1}
+.mapsvg .slot.full{stroke:#5a6a88;fill:#101826}.mapsvg .slot.wip{stroke:#5a6a88;stroke-dasharray:2 2}
+.mapsvg .pic{fill:none;stroke:var(--text);stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.mapsvg .lv{stroke:var(--acc);stroke-width:1.5}
+.mapsvg .unit.copy .pic{stroke:var(--me);fill:rgba(255,215,94,.25)}
+.mapsvg .unit.cons .pic{stroke:var(--acc)}
+.mapsvg .unit.moving{opacity:.5}
+
+/* Blatt von unten über der Bedienleiste */
+#sheet{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + var(--bar));max-height:60vh;overflow-y:auto;padding:12px 14px 14px;background:var(--panel);border-top:1px solid var(--line);display:none;z-index:4}
+#sheet.show{display:block}
 .hd{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;margin-bottom:6px}
+.hd .x{margin-left:auto;min-height:30px;padding:2px 10px}
 .hd.log{margin-top:18px}
-.dim{color:var(--dim)}.ok,.good{color:var(--ok)}.warn{color:var(--warn)}
+.facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;margin:4px 0}
 .row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
 .row button{flex:1;min-width:90px}
+.front{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.front>div{flex:1}
 .loglist div{padding:3px 0;border-bottom:1px solid var(--line);font-size:13px}
+
+/* Feste Bedienleiste unten: immer an derselben Stelle */
+#bar{position:fixed;left:0;right:0;bottom:0;height:calc(env(safe-area-inset-bottom) + var(--bar));padding:6px 8px calc(env(safe-area-inset-bottom) + 6px);display:flex;gap:8px;background:var(--bg);border-top:1px solid var(--line);z-index:5}
+#bar button{flex:1;font-size:20px}
+
 #toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 70px);background:rgba(14,39,56,.95);border:1px solid #2b6a8c;color:#d8f2ff;padding:8px 14px;border-radius:8px;max-width:90vw;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6}
