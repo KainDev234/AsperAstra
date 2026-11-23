@@ -72,14 +72,15 @@ export const CONS = { cost: 12, time: 0.5, up: 15, speed: [0, 1, 2] };
 export const MOVE_T = [1 / 12, 3 / 12];
 
 /**
- * Sonde: Kosten und Bauzeit in der Werft, Tempo (Anteil von c), mitgebrachte Materie, Verlustrisiko je
- * weiterer gleichzeitig fliegender Sonde, Länge der Bauliste einer Werft.
+ * Sonde: Kosten und Bauzeit in der Werft, Tempo (Anteil von c), mitgebrachte Materie, Länge der Bauliste einer
+ * Werft. Beim Start kostet sie Treibstoff je Lj (fuel). Verlustrisiko (#11): risk je anderer Sonde, die gerade
+ * zu einem Ziel im Umkreis von riskR Lj um das eigene Ziel fliegt (Dichte zählt örtlich, nicht im Ganzen).
  */
-export const PROBE = { cost: 40, time: 1, v: 0.2, seedM: 15, risk: 0.04, queue: 3 };
+export const PROBE = { cost: 40, time: 1, v: 0.2, seedM: 15, risk: 0.04, riskR: 10, fuel: 3, queue: 3 };
 /** Ferne Fronten starten Sonden nur bis zu diesem Verlustrisiko (feste Regel, #6). */
 export const FRONT_RISK_MAX = 0.08;
 /** Startpaket in Sol: Materie im Lager (ein Kraftwerk am Stern steht schon). */
-export const START_MATTER = 40;
+export const START_MATTER = 60;   // #11: vorher 40, am Anfang zu viel Warten
 /** Sol: Ort der Erde (Startpunkt der Kopie). */
 export const EARTH = 3;
 
