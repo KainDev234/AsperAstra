@@ -15,8 +15,9 @@
  * und nur bei Erfolg übernommen. Sonst bleibt das laufende Spiel unverändert.
  */
 import { S, setState } from './state.js';
-import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES } from './data.js';
-import { hooks } from './sim.js';
+import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES, BUILD, ORTE, PROBE, QUEUE_MAX } from './data.js';
+import { hooks, itemValid, WAITS } from './sim.js';
+import { galaxy } from './galaxy.js';
 import { SEED_RANGE } from './util.js';
 
 /** Sicherung eines Autosaves, der sich beim Start nicht laden ließ; das neue Spiel überschreibt ihn sonst. */
@@ -66,18 +67,108 @@ const year = x => within(x, START_YEAR, YEAR_MAX);
 const validLog = e => obj(e) && only(e, ['y', 't', 'c']) && year(e.y) && str(e.t) && e.t.length <= LOG_TEXT_MAX
   && (e.c === undefined || LOG_CLASSES.includes(e.c));
 
+/** Obergrenze für Materie (weit über allem, was im Spiel vorkommt). */
+const BIG = 1e12;
+/** Obergrenzen für Listen, damit ein manipulierter Stand keine riesigen Schleifen auslöst. */
+const MAX_UNITS = 2000, MAX_MAIL = 50000;
+/** Schlüssel in BUILD (eigener Eintrag, nicht z. B. "__proto__"). */
+const buildKey = k => str(k) && Object.prototype.hasOwnProperty.call(BUILD, k);
+
+/** Gebäude { k, o, lv } an Stern st. */
+const validBuilding = (b, st) => obj(b) && only(b, ['k', 'o', 'lv']) && buildKey(b.k) && int(b.o, 0, st.orte.length - 1)
+  && BUILD[b.k].at.includes(st.orte[b.o].k) && int(b.lv, 1, BUILD[b.k].up === null ? 1 : 2);
+
+/** System { s, m, b, pq, pj, ready }; Plätze je Ort werden im Ganzen geprüft (validate). */
+function validSys(y, stars) {
+  if (!obj(y) || !only(y, ['s', 'm', 'b', 'pq', 'pj', 'ready']) || !int(y.s, 0, stars.length - 1)) return false;
+  const st = stars[y.s];
+  return within(y.m, 0, BIG) && Array.isArray(y.b) && y.b.every(b => validBuilding(b, st))
+    && int(y.pq, 0, PROBE.queue) && (y.pj === null || within(y.pj, -1, PROBE.time)) && int(y.ready, 0, 1000);
+}
+
+/** Laufender Auftrag eines Bauers an Stern st. */
+function validJob(j, st) {
+  if (!obj(j) || !int(j.o, 0, st.orte.length - 1) || !within(j.left, -1, 10)) return false;
+  if (j.a === 'build' || j.a === 'up') return only(j, ['a', 'k', 'o', 'left']) && buildKey(j.k) && BUILD[j.k].at.includes(st.orte[j.o].k) && (j.a === 'build' || BUILD[j.k].up !== null);
+  if (j.a === 'cons') return only(j, ['a', 'o', 'left']);
+  return j.a === 'consup' && only(j, ['a', 'id', 'o', 'left']) && int(j.id, 1, 1e9);
+}
+
+/** Bauer { id, k, s, o, lv, q, job, mv, wait? }; s muss ein System sein. */
+function validUnit(u, stars) {
+  if (!obj(u) || !only(u, ['id', 'k', 's', 'o', 'lv', 'q', 'job', 'mv', 'wait'])) return false;
+  if (!int(u.id, 1, 1e9) || !['copy', 'cons'].includes(u.k) || !int(u.s, 0, stars.length - 1)) return false;
+  const st = stars[u.s];
+  if (!int(u.o, 0, st.orte.length - 1) || !int(u.lv, 1, u.k === 'copy' ? 1 : 2)) return false;
+  if (!Array.isArray(u.q) || u.q.length > QUEUE_MAX || !u.q.every(it => itemValid(it, st))) return false;
+  if (u.job !== null && (!validJob(u.job, st) || u.job.o !== u.o)) return false;
+  if (u.mv !== null && !(obj(u.mv) && only(u.mv, ['o', 't']) && int(u.mv.o, 0, st.orte.length - 1) && within(u.mv.t, -1, 1))) return false;
+  if (u.mv !== null && u.job !== null) return false;
+  return u.wait === undefined || WAITS.includes(u.wait);
+}
+
+/** Sonde im Flug { id, from, to, at, seed, two, risk }. */
+const validProbe = (p, stars, yr) => obj(p) && only(p, ['id', 'from', 'to', 'at', 'seed', 'two', 'risk'])
+  && int(p.id, 1, 1e9) && int(p.from, 0, stars.length - 1) && int(p.to, 0, stars.length - 1) && p.from !== p.to
+  && within(p.at, yr - 1, YEAR_MAX) && ['mine', 'power'].includes(p.seed) && typeof p.two === 'boolean' && within(p.risk, 0, 1);
+
+/** Bericht eines Systems { y, m, b: { Art: Anzahl }, cons, ready } (ohne s). */
+const validReport = (r, yr) => obj(r) && year(r.y) && r.y <= yr + 1 && int(r.m, 0, BIG) && obj(r.b)
+  && Object.entries(r.b).every(([k, n]) => buildKey(k) && int(n, 1, 1000)) && int(r.cons, 0, MAX_UNITS) && int(r.ready, 0, 1000);
+
+/** Nachricht unterwegs { at, k, s, d? }. */
+function validMail(x, stars, yr) {
+  if (!obj(x) || !within(x.at, yr - 1, YEAR_MAX) || !int(x.s, 0, stars.length - 1)) return false;
+  if (x.k === 'rep') return only(x, ['at', 'k', 's', 'd']) && validReport(x.d, yr);
+  return ['arrive', 'lost'].includes(x.k) && only(x, ['at', 'k', 's']);
+}
+
 /**
- * Prüft einen (migrierten) Spielstand vollständig.
+ * Prüft einen (migrierten) Spielstand vollständig: Felder und Typen, Verweise auf Sterne, Orte und Bauer,
+ * Plätze je Ort, genau eine Kopie je System, aktive Front oder Sprung.
  * @returns {boolean} true, wenn er gefahrlos als laufendes Spiel übernommen werden kann
  */
 export function validate(d) {
-  if (!obj(d) || d.v !== SAVE_VERSION || !only(d, ['v', 'seed', 'rng', 'year', 'speed', 'tempo', 'log'])) return false;
+  const KEYS = ['v', 'seed', 'rng', 'year', 'speed', 'tempo', 'log', 'me', 'jump', 'sys', 'units', 'nextId', 'probes', 'known', 'mail', 'rep', 'nextRep'];
+  if (!obj(d) || d.v !== SAVE_VERSION || !only(d, KEYS) || KEYS.some(k => d[k] === undefined)) return false;
   // seed: 0 … 2^32−1; rng: 32-Bit-Zustand des Simulations-Zufalls
   if (!int(d.seed, 0, SEED_RANGE - 1) || !int(d.rng, -(2 ** 31), 2 ** 31 - 1)) return false;
   // speed nur 0 (Pause) oder 1 (Laufen) – ein riesiger Wert ließe advance() minutenlang rechnen
   if (!year(d.year) || ![0, 1].includes(d.speed)) return false;
   if (!obj(d.tempo) || !only(d.tempo, ['n']) || !int(d.tempo.n, 0, TEMPO.length - 1)) return false;
-  return Array.isArray(d.log) && d.log.length <= LOG_MAX && d.log.every(validLog);
+  if (!Array.isArray(d.log) || d.log.length > LOG_MAX || !d.log.every(validLog)) return false;
+  const stars = galaxy(d.seed), yr = d.year;
+  // Systeme: verschiedene Sterne, Plätze je Ort eingehalten (laufende Bauaufträge zählen mit)
+  if (!Array.isArray(d.sys) || d.sys.length < 1 || d.sys.length > stars.length || !d.sys.every(y => validSys(y, stars))) return false;
+  const sysAt = new Map(d.sys.map(y => [y.s, y]));
+  if (sysAt.size !== d.sys.length) return false;
+  // Bauer: eindeutige ids, nur in Systemen, genau eine Kopie je System
+  if (!Array.isArray(d.units) || d.units.length > MAX_UNITS || !d.units.every(u => validUnit(u, stars) && sysAt.has(u.s))) return false;
+  const ids = new Set(d.units.map(u => u.id));
+  if (ids.size !== d.units.length) return false;
+  for (const y of d.sys) if (d.units.filter(u => u.s === y.s && u.k === 'copy').length !== 1) return false;
+  for (const y of d.sys) {
+    const st = stars[y.s];
+    for (let o = 0; o < st.orte.length; o++) {
+      const n = y.b.filter(b => b.o === o).length + d.units.filter(u => u.s === y.s && u.job && u.job.a === 'build' && u.job.o === o).length;
+      if (n > ORTE[st.orte[o].k].slots) return false;
+    }
+  }
+  // aktive Front oder Sprung, genau eins
+  if ((d.me === null) === (d.jump === null)) return false;
+  if (d.me !== null && !sysAt.has(d.me)) return false;
+  if (d.jump !== null && !(obj(d.jump) && only(d.jump, ['to', 'at']) && sysAt.has(d.jump.to) && within(d.jump.at, yr - 1, YEAR_MAX))) return false;
+  // Sonden: Ziel frei und nur einmal; ids verschieden von denen der Bauer
+  if (!Array.isArray(d.probes) || d.probes.length > MAX_UNITS || !d.probes.every(p => validProbe(p, stars, yr) && !sysAt.has(p.to))) return false;
+  if (new Set(d.probes.map(p => p.to)).size !== d.probes.length) return false;
+  const allIds = [...ids, ...d.probes.map(p => p.id)];
+  if (new Set(allIds).size !== allIds.length || !int(d.nextId, 1, 1e9) || allIds.some(i => i >= d.nextId)) return false;
+  // Wissen, Nachrichten, Berichte
+  if (!Array.isArray(d.known) || !d.known.every(s => int(s, 0, stars.length - 1)) || new Set(d.known).size !== d.known.length) return false;
+  if (!Array.isArray(d.mail) || d.mail.length > MAX_MAIL || !d.mail.every(x => validMail(x, stars, yr))) return false;
+  if (!Array.isArray(d.rep) || !d.rep.every(r => obj(r) && only(r, ['s', 'y', 'm', 'b', 'cons', 'ready']) && int(r.s, 0, stars.length - 1) && validReport(r, yr))) return false;
+  if (new Set(d.rep.map(r => r.s)).size !== d.rep.length) return false;
+  return int(d.nextRep, START_YEAR + 1, YEAR_MAX) && d.nextRep > yr - 1 && d.nextRep <= yr + 1;
 }
 
 /**

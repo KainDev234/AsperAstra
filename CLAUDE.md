@@ -23,6 +23,13 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
   Felder werden abgelehnt). Formatänderung → `SAVE_VERSION` (`data.js`) erhöhen und Migration in `save.MIGRATIONS`.
 - **Zeitsteuerung** (`clock.js`): Pause und Laufen mit Tempo; `sim.event(grund)` hält an und schreibt ins Logbuch.
 - `server.js`: liefert nur `index.html`, `css/`, `js/` aus (Positivliste).
+- **Galaxie** (`galaxy.js`): fest durch den Seed, nicht im Spielstand; `galaxy(seed)` erzeugt und merkt sie.
+  Eigener Zufall, unabhängig von `sim.rand()`.
+- **Kern-Simulation** (`sim.js`, Regeln in #6): Systeme mit Kopie rechnen voll (Materie, Energie mit anteiliger
+  Drosselung, Gebäude an Orten). Gebaut wird nur durch Bauer am Ort (Kopie, Konstruktoren) über ihre Warteschlange;
+  Befehle (`order`, `orderProbe`, `launchProbe`, `jump`) gelten nur an der aktiven Front `S.me`. Ferne Fronten
+  bauen nach der festen Regel `planFront` (keine Anweisungen in Phase 3). Nachrichten und Berichte reisen mit c
+  (`S.mail`); was der Spieler über ferne Systeme weiß, steht in `S.known` und `S.rep`, nicht in `S.sys`.
 
 ## Starten & Testen
 - Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen.
