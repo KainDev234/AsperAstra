@@ -445,7 +445,7 @@ test('Testspielstände: erreichen ihre Lage, immer gleich, gültig, auf Pause', 
   SC.loadScenario('start'); assert.equal(st.S.year, D.START_YEAR);
   SC.loadScenario('overflow'); assert.ok(Math.abs(st.S.year - D.START_YEAR - 150) < 1e-6);
   SC.loadScenario('fronts');
-  const f = st.S.rep.find(r => r.s !== 0 && sim.sysOf(r.s).b.some(b => b.k === 'sender'));
+  const f = st.S.rep.find(r => r.s !== 0 && r.b.sender > 0);
   assert.equal(sim.jump(f.s), '', 'Sprung möglich');
   assert.equal(SC.loadScenario('__proto__'), false);
 });
@@ -616,6 +616,52 @@ test('Werftleiste: Sonde in Auftrag, Fortschritt, bereit', () => {
   ui.renderUI(true); assert.match(q('#head').innerHTML, /im Bau · [0-9]+ %/);
   for (let i = 0; i < 12 && !sol.ready; i++) sim.step(1 / 12);
   ui.renderUI(true); assert.ok(q('#head').innerHTML.includes('1 bereit'));
+});
+
+// ---------- Reisen über die Oberfläche (#13, Teil 3) ----------
+test('Sonde starten: Starten führt zur Galaxie, Sternblatt mit Saatpaket, gesperrt mit Grund', () => {
+  store.clear(); sim.newGame(24); ui.restart();
+  const S = st.S, U2 = st.UI, q = s => document.querySelector(s), sol = sim.sysOf(0);
+  const t = sim.stars().slice(1).sort((a, b) => U.dist(a, sim.star(0)) - U.dist(b, sim.star(0)))[0];
+  ui.tapStar(t.i);
+  assert.match(q('#sheet').innerHTML, /data-a="launch:[0-9]+:mine" disabled>.*keine Sonde bereit/);
+  sol.ready = 1; sol.m = 0; ui.renderUI(true);
+  assert.match(q('#sheet').innerHTML, /data-a="launch:[0-9]+:mine" disabled>.*M fehlt/);
+  sol.m = 200; sol.b.push({ k: 'werft', o: 4, lv: 1 });
+  ui.act('front'); ui.renderUI(true);
+  assert.ok(q('#head').innerHTML.includes('data-a="start"'), 'Starten in der Werftleiste');
+  ui.act('start'); assert.equal(U2.level, 'galaxy');
+  ui.tapStar(t.i);
+  assert.ok(!/data-a="launch:[0-9]+:power" disabled/.test(q('#sheet').innerHTML));
+  ui.act('launch:' + t.i + ':power');
+  assert.equal(S.probes.length, 1); assert.equal(S.probes[0].seed, 'power');
+  assert.equal(U2.sheet, null);
+  ui.tapStar(t.i);
+  assert.ok(q('#sheet').innerHTML.includes('Sonde unterwegs') && !q('#sheet').innerHTML.includes('launch:'));
+});
+
+test('Springen: Sender hier und laut Bericht dort, Nachfrage, unterwegs keine Befehle, Ankunft', () => {
+  SC.loadScenario('fronts'); ui.restart();
+  const S = st.S, U2 = st.UI, q = s => document.querySelector(s);
+  // bis ein Bericht mit Sender da ist (der Testspielstand endet, sobald dort einer steht; der Bericht kann älter sein)
+  for (let i = 0; i < 12 * 60 && !S.rep.some(r => r.s !== 0 && r.b.sender); i++) sim.step(1 / 12);
+  const f = S.rep.find(r => r.s !== 0 && r.b.sender).s;
+  ui.tapStar(f);
+  assert.match(q('#sheet').innerHTML, /Springen · [0-9.]+ J/);
+  ui.act('jump:' + f); assert.equal(S.me, 0, 'erster Tipp fragt nach');
+  assert.ok(q('#sheet').innerHTML.includes('Sicher?'));
+  ui.act('jump:' + f);
+  assert.equal(S.me, null); assert.ok(S.jump);
+  ui.tapStar(f); assert.ok(!q('#sheet').innerHTML.includes('jump:'), 'unterwegs keine Reiseknöpfe');
+  ui.act('front'); assert.equal(U2.sys, f, 'Zur Front zeigt das Ziel');
+  while (S.me === null) sim.step(1 / 12);
+  assert.equal(S.me, f);
+  // jetzt ist f die Front, Sol fern: Sprung zurück braucht Solar-Bericht mit Sender
+  ui.tapStar(0); ui.renderUI(true);
+  assert.ok(q('#sheet').innerHTML.includes('jump:0'));
+  // ohne Sender hier gesperrt
+  const sys = sim.sysOf(f); sys.b = sys.b.filter(b => b.k !== 'sender'); ui.renderUI(true);
+  assert.match(q('#sheet').innerHTML, /data-a="jump:0" disabled>.*Sender fehlt hier/);
 });
 
 // ---------- Versionsangaben (#15) ----------

@@ -9,7 +9,7 @@
 import { S, UI } from './state.js';
 import { TEMPO, CLASSES, ORTE, PROBE, BUILD } from './data.js';
 import { $, esc, fmtDate, seedFromText, dist } from './util.js';
-import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, targetFree } from './sim.js';
+import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, targetFree, launchProbe, jump } from './sim.js';
 import { setSpeed, setTempo } from './clock.js';
 import { save, exportFile, importText, hasBackup, exportBackup, deleteBackup } from './save.js';
 import { SCENARIOS, loadScenario } from './scenarios.js';
@@ -25,6 +25,9 @@ const LOAD_TEXT = {
   ok: 'Spielstand geladen.', outdated: 'Spielstand ist zu alt für diese Version.',
   newer: 'Spielstand stammt aus einer neueren Version.', invalid: 'Datei ist kein gültiger Spielstand.',
 };
+/** Gründe, warum ein Sondenstart bzw. Sprung nicht geht (aus sim.launchProbe / sim.jump). */
+const LAUNCH_FAIL = { fern: 'Nur von der aktiven Front', keine: 'Keine Sonde bereit', ziel: 'Ziel schon vergeben', materie: 'Zu wenig Materie für den Treibstoff' };
+const JUMP_FAIL = { unterwegs: 'Schon unterwegs', ziel: 'Kein eigenes System', sender: 'An beiden Enden braucht es einen Sender' };
 /** Besonderheiten eines Systems (Fund) in Kurzform. */
 const SPECIAL = { richBelt: 'reicher Gürtel', gasPower: 'Gasriese +Energie' };
 /** Gebäudearten in fester Anzeigereihenfolge. */
@@ -66,10 +69,12 @@ const home = () => S.me !== null ? S.me : S.jump.to;
  *   von Stern s; new = neues Spiel, scen:<k> = Testspielstand (beide fragen erst nach: zweimal tippen);
  *   export / import = Datei speichern / laden; backup:export / backup:delete = alten Autosave sichern / verwerfen;
  *   ort:<o> = Stufe Ort der aktiven Front; Bauaktionen des Ortsblatts und der Werftleiste siehe ortui.actOrt.
- *   Was etwas zerstört oder ersetzt (neues Spiel, Testspielstand, Abriss), fragt erst nach.
+ *   start = fertige Sonde starten (zur Galaxie, Ziel antippen); launch:<s>:<mine|power> = Sonde zu Stern s mit
+ *   Saatpaket; jump:<s> = Sprung zu System s.
+ *   Was etwas zerstört, ersetzt oder dich fortbringt (neues Spiel, Testspielstand, Abriss, Sprung), fragt erst nach.
  */
 export function act(a) {
-  const asks = a === 'new' || /^(scen|raze|consraze):/.test(a);
+  const asks = a === 'new' || /^(scen|raze|consraze|jump):/.test(a);
   if (asks && UI.confirm !== a) { UI.confirm = a; renderUI(true); return; }   // erster Tipp: nachfragen
   UI.confirm = null;
   if (a === 'speed:0' || a === 'speed:1') setSpeed(+a.slice(6));
@@ -77,6 +82,17 @@ export function act(a) {
     if (UI.level === 'ort') { UI.level = 'system'; UI.sheet = null; }
     else if (UI.level === 'system') { UI.level = 'galaxy'; centerOn(UI.sys); }
     else { const { W, H } = mapSize(); zoomAt(.5, W / 2, H / 2); }
+  }
+  else if (a === 'start') { UI.level = 'galaxy'; UI.sheet = null; UI.sel = null; centerOn(home()); toast('Ziel antippen'); }
+  else if (a.startsWith('launch:')) {
+    const [, s, seed] = a.split(':'), r = launchProbe(+s, seed);
+    toast(r ? LAUNCH_FAIL[r] || 'Geht nicht' : 'Sonde gestartet');
+    if (!r) { UI.sheet = null; UI.sel = null; }
+  }
+  else if (a.startsWith('jump:')) {
+    const r = jump(+a.slice(5));
+    toast(r ? JUMP_FAIL[r] || 'Geht nicht' : 'Sprung gestartet');
+    if (!r) { UI.level = 'galaxy'; UI.sheet = null; }
   }
   else if (a.startsWith('ort:')) { if (UI.sys === S.me) { UI.level = 'ort'; UI.ort = +a.slice(4); UI.sheet = 'ort'; } }
   else if (a === 'front') { openSystem(home()); return; }
@@ -195,7 +211,27 @@ function starHtml(s) {
       + `<span>Reichtum ×${st.rich}</span>${st.spec ? `<span class="good">${SPECIAL[st.spec]}</span>` : ''}</div>`;
     h += `<div class="row"><button data-a="sys:${s}">System ›</button></div>`;
   } else h += '<div class="facts dim"><span>Fund unbekannt</span></div>';
-  return h;
+  return h + travelHtml(s);
+}
+
+/**
+ * Reiseknöpfe im Sternblatt (#13, Teil 3). Unbekannter freier Stern: Sonde mit Saatpaket Mine oder Kraftwerk
+ * (gesperrt mit Grund: keine Sonde bereit, Materie für den Treibstoff fehlt). Eigenes System: Springen, wenn an
+ * beiden Enden ein Sender steht – dort laut letztem Bericht (gesperrt mit Grund). Während eines Sprungs nichts.
+ */
+function travelHtml(s) {
+  if (S.me === null || s === S.me) return '';
+  const me = sysOf(S.me), st = star(s);
+  const btn = (a, label, why) => `<button data-a="${a}"${why ? ' disabled' : ''}>${label}${why ? `<small class="dim">${why}</small>` : ''}</button>`;
+  if (!isKnown(s)) {
+    if (!targetFree(s)) return '';
+    const why = me.ready < 1 ? 'keine Sonde bereit' : me.m < fuelCost(S.me, s) ? 'M fehlt' : '';
+    return `<div class="row build">${btn(`launch:${s}:mine`, `${ico('probe')} Sonde + ${ico('mine')}`, why)}${btn(`launch:${s}:power`, `${ico('probe')} Sonde + ${ico('power')}`, why)}</div>`;
+  }
+  const r = reportOf(s), here = me.b.some(b => b.k === 'sender'), there = r && r.b.sender > 0;
+  const why = !here ? 'Sender fehlt hier' : !there ? 'Sender dort nicht gemeldet' : '';
+  const a = `jump:${s}`, d = dist(st, star(S.me));
+  return `<div class="row">${UI.confirm === a ? `<button data-a="${a}" class="warn">Sicher? ${d.toFixed(1)} J unterwegs</button>` : btn(a, `Springen · ${d.toFixed(1)} J`, why)}</div>`;
 }
 
 /** Schnellsuche „Fronten“: aktive Front, Sol, dann nach Entfernung; je Zeile „Zeigen“. */

@@ -120,5 +120,6 @@ export function werftHtml() {
   const pct = sys.pj === null ? 0 : Math.round(100 * (1 - sys.pj / PROBE.time));
   return `<div class="werft">${ico('werft')} <span>${sys.pq ? `${sys.pq} im Bau${sys.pj !== null ? ` · ${pct} %` : ` · ${PROBE.cost} M fehlt`}` : '<span class="dim">leer</span>'}</span>`
     + `${sys.ready ? ` <span class="good">${ico('probe')} ${sys.ready} bereit</span>` : ''}`
+    + (sys.ready ? '<button data-a="start">Starten ›</button>' : '')
     + `<button data-a="probe"${sys.pq >= PROBE.queue ? ' disabled' : ''}>+ ${ico('probe')} ${PROBE.cost} M</button></div>`;
 }
