@@ -59,7 +59,7 @@ export function starNear(sx, sy, r = 26) {
 /** Zeichnet die Karte in der aktuellen Stufe neu. */
 export function renderMap() {
   const { W, H } = mapSize();
-  const body = UI.level === 'system' ? systemSvg(UI.sys, W, H) : UI.level === 'ort' ? ortSvg(UI.sys, UI.ort, W, H) : galaxySvg(W, H);
+  const body = UI.level === 'galaxy' ? galaxySvg(W, H) : systemSvg(UI.sys, W, H);   // Ortsstufe: System dahinter, Ort im Blatt
   $('#map').innerHTML = `<svg width="${W}" height="${H}" class="mapsvg">${body}</svg>`;
 }
 
@@ -146,13 +146,21 @@ function systemSvg(s, W, H) {
 /** Fortschritt eines Auftrags (0 … 1) aus seiner Restzeit. */
 const progress = j => 1 - Math.max(0, j.left) / (j.a === 'cons' || j.a === 'consup' ? CONS.time : BUILD[j.k].time);
 
+/** Höhe der Ortsgrafik in px (oben im Ortsblatt). */
+export const ORT_H = 136;
+
 /**
- * Ort (nur aktive Front): der Körper groß, darunter die Bauplätze als große Felder mit Gebäude, Stufe und
- * Baufortschritt, darüber die Bauer, die hier stehen oder hierher reisen. Bedienung im Ortsblatt (ui.js).
+ * Ort (nur aktive Front) als eigenständiges SVG für den Kopf des Ortsblatts: links der Körper groß, darunter die
+ * Bauer, die hier stehen oder hierher reisen (halb durchsichtig); rechts die Bauplätze als große Felder mit
+ * Gebäude, Stufe und Baufortschritt. Sie steht im Blatt und nicht auf der Karte, damit sich Grafik und Bedienung
+ * bei keiner Bildschirmhöhe überdecken (Handytest zu #17). Bedienung: ortui.js.
  */
-function ortSvg(s, o, W, H) {
-  // unter der Kopfzeile (bis ~100 px) und über dem Ortsblatt (unteres gut halbes Bild): Körper links, Plätze rechts
-  const st = star(s), ort = st.orte[o], sys = sysOf(s), cx = 70, cy = 150;
+export function ortGraphic(s, o, W) {
+  return `<svg width="${W}" height="${ORT_H}" class="mapsvg ortsvg">${ortSvg(s, o)}</svg>`;
+}
+
+function ortSvg(s, o) {
+  const st = star(s), ort = st.orte[o], sys = sysOf(s), cx = 50, cy = 52;
   let h = '';
   if (ort.k === 'star') h += `<circle cx="${cx}" cy="${cy}" r="34" fill="${CLASSES[st.cls].c}"/>`;
   else if (ort.k === 'belt') for (let j = 0; j < 22; j++) h += `<circle cx="${(cx + Math.cos(j * 2.4) * (14 + j * 1.3)).toFixed(1)}" cy="${(cy + Math.sin(j * 2.4) * (8 + j * .6)).toFixed(1)}" r="${(1.5 + (j % 3) * .7).toFixed(1)}" class="rock"/>`;
@@ -161,7 +169,7 @@ function ortSvg(s, o, W, H) {
   const n = ORTE[ort.k].slots, built = sys.b.filter(b => b.o === o), here = S.units.filter(u => u.s === s);
   const jobs = here.filter(u => u.job && u.job.o === o).map(u => u.job);
   const builds = jobs.filter(j => j.a === 'build'), ups = jobs.filter(j => j.a === 'up');
-  const size = 48, gap = 12, left = 130, by = cy - size / 2;
+  const size = 48, gap = 12, left = 116, by = cy - size / 2;
   for (let k = 0; k < n; k++) {
     const x = left + k * (size + gap), b = built[k], job = !b && builds[k - built.length];
     h += `<rect x="${x}" y="${by}" width="${size}" height="${size}" rx="6" class="slot${b ? ' full' : job ? ' wip' : ''}"/>`;
@@ -175,7 +183,7 @@ function ortSvg(s, o, W, H) {
   }
   // Bauer: hier oder auf dem Weg hierher (halb durchsichtig)
   here.filter(u => (u.mv ? u.mv.o : u.o) === o).forEach((u, k) => {
-    h += `<g class="unit ${u.k}${u.mv ? ' moving' : ''}">${icoAt(u.k === 'copy' ? 'probe' : 'cons', cx - 40 + k * 26, cy + 52, 20)}</g>`;
+    h += `<g class="unit ${u.k}${u.mv ? ' moving' : ''}">${icoAt(u.k === 'copy' ? 'probe' : 'cons', cx - 26 + k * 26, cy + 64, 20)}</g>`;
   });
   return h;
 }

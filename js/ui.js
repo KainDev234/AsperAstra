@@ -13,7 +13,7 @@ import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, target
 import { setSpeed, setTempo } from './clock.js';
 import { save, exportFile, importText, hasBackup, exportBackup, deleteBackup } from './save.js';
 import { SCENARIOS, loadScenario } from './scenarios.js';
-import { renderMap, centerOn, zoomAt, mapSize } from './map.js';
+import { renderMap, centerOn, zoomAt, mapSize, ortGraphic } from './map.js';
 import { viewer, isKnown, isLive, reportOf, frontList } from './view.js';
 import { ico } from './icons.js';
 import { ortHtml, werftHtml, actOrt } from './ortui.js';
@@ -148,9 +148,12 @@ export function renderUI(force) {
   head.classList.toggle('show', inSys);
   const sheet = $('#sheet');
   sheet.innerHTML = UI.sheet === 'star' && UI.sel !== null ? starHtml(UI.sel) : UI.sheet === 'fronts' ? frontsHtml() : UI.sheet === 'game' ? gameHtml()
-    : UI.sheet === 'ort' && UI.level === 'ort' ? ortHtml(UI.confirm) : '';
+    : UI.sheet === 'ort' && UI.level === 'ort' ? ortGraphic(UI.sys, UI.ort, mapSize().W - 28) + ortHtml(UI.confirm) : '';
   sheet.classList.toggle('show', !!UI.sheet);
   sheet.classList.toggle('ort', UI.sheet === 'ort');
+  // Ortsblatt füllt den Raum zwischen Kopfzeile und Bedienleiste (Kopfzeile ist ein- oder zweizeilig)
+  const hb = head.getBoundingClientRect && head.getBoundingClientRect();
+  sheet.style.top = UI.sheet === 'ort' && hb ? hb.bottom + 'px' : '';
   $('#btnFronts').classList.toggle('on', UI.sheet === 'fronts');
   $('#btnGame').classList.toggle('on', UI.sheet === 'game');
 }
