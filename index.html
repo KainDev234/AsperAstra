@@ -19,9 +19,15 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>AsperAstra</title>
-<link rel="stylesheet" href="css/style.css">
+<!--
+  Versionsangaben gegen veraltete Dateien im Zwischenspeicher (#15): ?v= ist die Prüfsumme des Inhalts. Die
+  Import-Map gilt auch für relative Importe zwischen den Modulen. Nicht von Hand pflegen: node tools/version.mjs
+  (ein Test prüft, dass alles aktuell ist).
+-->
+<script type="importmap">{ "imports": { "./js/bot.js": "./js/bot.js?v=22410405", "./js/clock.js": "./js/clock.js?v=67071718", "./js/data.js": "./js/data.js?v=73f82104", "./js/galaxy.js": "./js/galaxy.js?v=5e757265", "./js/icons.js": "./js/icons.js?v=0a3f964b", "./js/input.js": "./js/input.js?v=e7d91f58", "./js/main.js": "./js/main.js?v=41fe1644", "./js/map.js": "./js/map.js?v=8fad29cb", "./js/save.js": "./js/save.js?v=a2433260", "./js/scenarios.js": "./js/scenarios.js?v=f492f103", "./js/sim.js": "./js/sim.js?v=f5534893", "./js/state.js": "./js/state.js?v=427ebf38", "./js/ui.js": "./js/ui.js?v=3e5cd77e", "./js/util.js": "./js/util.js?v=6f9563dd", "./js/view.js": "./js/view.js?v=d631c97d" } }</script>
+<link rel="stylesheet" href="css/style.css?v=3ed18836">
 <!-- type="module" wird automatisch erst nach dem Aufbau der Seite ausgeführt. -->
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/main.js?v=41fe1644"></script>
 </head>
 <body>
 <!-- Statusleiste: Spiel-Knopf, Datum, Zeitsteuerung mit Tempo-Schieberegler (feste Breiten). data-a = ui.act(). -->

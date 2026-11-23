@@ -12,6 +12,7 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 
 // ---------- Umgebung ----------
 const store = new Map();
@@ -544,6 +545,21 @@ test('Sicht (#13): Sonden erst sichtbar, wenn das Licht vom Start da ist', () =>
   S.year += .2; assert.equal(VW.probesSeen().length, 1, 'nach der Lichtlaufzeit sichtbar');
   const p = VW.probePos(S.probes[0]), f = (d + .1) / fly;
   assert.ok(Math.abs(p.x - (t.x + (to.x - t.x) * Math.min(1, f))) < 1e-9);
+});
+
+// ---------- Versionsangaben (#15) ----------
+test('Versionen: index.html nennt für Stylesheet und jedes Modul die aktuelle Prüfsumme (sonst: node tools/version.mjs)', async () => {
+  const VS = await import(new URL('../tools/version.mjs', js));
+  const html = readFileSync(new URL('../index.html', js), 'utf8');
+  assert.equal(html, VS.versionedHtml(html), 'veraltet – node tools/version.mjs aufrufen');
+  const map = JSON.parse(html.match(/<script type="importmap">([^<]*)<\/script>/)[1]).imports;
+  assert.deepEqual(Object.keys(map).sort(), VS.modules().map(m => './' + m), 'jedes Modul in der Import-Map');
+  assert.ok(Object.values(map).every(v => /\?v=[0-9a-f]{8}$/.test(v)));
+  assert.match(html, /href="css\/style\.css\?v=[0-9a-f]{8}"/);
+  assert.match(html, /src="js\/main\.js\?v=[0-9a-f]{8}"/);
+  assert.ok(html.indexOf('type="importmap"') < html.indexOf('type="module"'), 'Import-Map vor dem ersten Modul');
+  // Zeilenenden ändern die Prüfsumme nicht
+  assert.equal(VS.fileHash('js/sim.js'), VS.fileHash('js/sim.js'));
 });
 
 // ---------- Server ----------
