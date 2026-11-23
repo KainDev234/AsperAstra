@@ -1,0 +1,4 @@
+{
+  "//": "Markiert die Dateien in js/ als ES-Module, damit Node sie (z. B. für Tests) importieren kann. Für den Browser ohne Bedeutung.",
+  "type": "module"
+}

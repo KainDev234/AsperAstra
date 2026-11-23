@@ -1,0 +1,29 @@
+/* AsperAstra – Stylesheet. Layout und Farben, optimiert für Smartphones im Hochformat. Grundfarben übernommen aus Replikator. */
+/* Farbpalette: dunkler Weltraum-Hintergrund, ein Akzent-Blau, Grün für Positives, Orange für Hinweise. */
+:root{--bg:#05070d;--panel:rgba(11,15,24,.96);--line:#1d2636;--text:#cdd6e4;--dim:#6b7890;--acc:#5ec8ff;--ok:#6fe39a;--warn:#ffb85e}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* Keine automatische Textvergrößerung mobiler Browser (Replikator #209): Sie bläst Schrift in breiten Flächen auf */
+html{-webkit-text-size-adjust:100%;-moz-text-size-adjust:100%;text-size-adjust:100%}
+/* Seite selbst scrollt nie; Textauswahl aus, damit langes Drücken nicht stört. */
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
+/* Statusleiste oben; env(safe-area-inset-*) berücksichtigt Notch/Kamera-Ausschnitte. */
+#top{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;display:flex;align-items:center;gap:12px;background:var(--bg);border-bottom:1px solid var(--line);z-index:2}
+#top b{font-weight:600}
+#speed{margin-left:auto;display:flex;gap:4px}
+/* Buttons mit mind. 36px Höhe, damit sie mit dem Finger gut treffbar sind. */
+button{font:inherit;color:var(--text);background:#111926;border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-height:36px;cursor:pointer}
+button:disabled{opacity:.35;cursor:default}
+button.on{border-color:var(--acc);color:var(--acc)}
+button.warn{border-color:var(--warn);color:var(--warn)}
+#speed button{padding:4px 12px;min-height:38px;font-size:15px}
+#tempoBtn{font-size:12px!important}
+input{font:inherit;color:var(--text);background:#0b0f18;border:1px solid var(--line);border-radius:6px;padding:7px 10px;min-height:36px;flex:1;min-width:0;-webkit-user-select:text;user-select:text}
+/* Panel unter der Statusleiste, scrollt selbst */
+#panel{position:fixed;left:0;right:0;bottom:0;top:calc(env(safe-area-inset-top) + 56px);overflow-y:auto;padding:12px 14px calc(env(safe-area-inset-bottom) + 16px)}
+.hd{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:600;margin-bottom:6px}
+.hd.log{margin-top:18px}
+.dim{color:var(--dim)}.ok,.good{color:var(--ok)}.warn{color:var(--warn)}
+.row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;align-items:center}
+.row button{flex:1;min-width:90px}
+.loglist div{padding:3px 0;border-bottom:1px solid var(--line);font-size:13px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 70px);background:rgba(14,39,56,.95);border:1px solid #2b6a8c;color:#d8f2ff;padding:8px 14px;border-radius:8px;max-width:90vw;font-size:13px;opacity:0;transition:opacity .3s;pointer-events:none;z-index:6}

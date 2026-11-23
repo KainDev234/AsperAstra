@@ -1,0 +1,39 @@
+<!doctype html>
+<!--
+  AsperAstra – minimalistisches Weltraum-Aufbauspiel (Konzept: KONZEPT.md).
+
+  Diese Datei enthält nur das Grundgerüst der Seite (feste UI-Elemente).
+  Aussehen:  css/style.css
+  Logik:     js/main.js und die davon importierten ES-Module (Übersicht in js/main.js)
+
+  Die Module werden direkt vom Browser geladen (kein Build-Schritt). Deshalb muss die Seite über einen
+  Webserver geöffnet werden (node server.js), nicht per Doppelklick.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05070d">
+<!-- Erlaubt "Zum Startbildschirm hinzufügen" als Vollbild-App. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>AsperAstra</title>
+<link rel="stylesheet" href="css/style.css">
+<!-- type="module" wird automatisch erst nach dem Aufbau der Seite ausgeführt. -->
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<!-- Statusleiste: Datum + Zeitsteuerung (Pause, Laufen, Tempo). data-a="…" sind Aktionen, siehe ui.act(). -->
+<div id="top">
+  <b id="tYear"></b>
+  <div id="speed">
+    <button id="pause" data-a="speed:0" title="Pause">❚❚</button><button id="play" data-a="speed:1" title="Laufen">▶</button><button id="tempoBtn" data-a="tempo" title="Tempo: Spielzeit je Sekunde"><span id="tTempo"></span>/s</button>
+  </div>
+</div>
+<!-- Panel "Spiel": Seed, neues Spiel, Datei, Logbuch (siehe ui.panelHtml). -->
+<div id="panel"></div>
+<div id="toast"></div>
+<!-- Unsichtbare Dateiauswahl für "Datei laden". -->
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+</body>
+</html>

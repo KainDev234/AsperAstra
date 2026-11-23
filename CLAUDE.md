@@ -15,7 +15,18 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
 - Weniger Text ist mehr: im ständigen Spiel Piktogramme, Farben, Zahlen; Text nur in freiwilligen Karten.
 
 ## Technik
-- Läuft im Browser ohne Build-Schritt (native ES-Module). Noch kein Code; das Grundgerüst folgt in Phase 2.
+- Läuft im Browser ohne Build-Schritt (native ES-Module). Modulübersicht im Kopf von `js/main.js`.
+- Logikmodule (`sim.js`, `clock.js`, `save.js`, `data.js`, `util.js`, `state.js`) ohne DOM, damit in Node testbar.
+- **Zufall nur über `sim.rand()`**: Der Zustand liegt im Spielstand (`S.rng`, aus dem Seed); nie `Math.random()` in
+  der Simulation. Gleicher Seed + gleiche Aktionen = gleicher Verlauf, auch nach Speichern und Laden.
+- **Spielstand** (`S`, Aufbau in `state.js`): Jedes neue Feld braucht eine Prüfung in `save.validate()` (unbekannte
+  Felder werden abgelehnt). Formatänderung → `SAVE_VERSION` (`data.js`) erhöhen und Migration in `save.MIGRATIONS`.
+- **Zeitsteuerung** (`clock.js`): Pause und Laufen mit Tempo; `sim.event(grund)` hält an und schreibt ins Logbuch.
+- `server.js`: liefert nur `index.html`, `css/`, `js/` aus (Positivliste).
+
+## Starten & Testen
+- Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen.
+- Tests: `node tools/test.mjs` (ohne Abhängigkeiten; Attrappen für `localStorage` und DOM).
 
 ## Arbeitsweise (vom Projektinhaber festgelegt)
 - **Neue Mechaniken und Ideen erst diskutieren, dann umsetzen.** Auch bei Lösungen für ein bereits besprochenes
