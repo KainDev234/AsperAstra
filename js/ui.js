@@ -16,6 +16,7 @@ import { SCENARIOS, loadScenario } from './scenarios.js';
 import { renderMap, centerOn, zoomAt, mapSize } from './map.js';
 import { viewer, isKnown, isLive, reportOf, frontList } from './view.js';
 import { ico } from './icons.js';
+import { ortHtml, werftHtml, actOrt } from './ortui.js';
 
 /** Wie viele Logbuch-Einträge das Blatt „Spiel“ zeigt (neueste zuerst). */
 const LOG_SHOWN = 30;
@@ -63,17 +64,21 @@ const home = () => S.me !== null ? S.me : S.jump.to;
  *   speed:0 / speed:1 = Pause / Laufen; out = eine Stufe heraus bzw. weiter herauszoomen; front = Systemstufe der
  *   aktiven Front; fronts = Schnellsuche; game = Blatt „Spiel“; close = Blatt schließen; sys:<s> = Systemstufe
  *   von Stern s; new = neues Spiel, scen:<k> = Testspielstand (beide fragen erst nach: zweimal tippen);
- *   export / import = Datei speichern / laden; backup:export / backup:delete = alten Autosave sichern / verwerfen.
+ *   export / import = Datei speichern / laden; backup:export / backup:delete = alten Autosave sichern / verwerfen;
+ *   ort:<o> = Stufe Ort der aktiven Front; Bauaktionen des Ortsblatts und der Werftleiste siehe ortui.actOrt.
+ *   Was etwas zerstört oder ersetzt (neues Spiel, Testspielstand, Abriss), fragt erst nach.
  */
 export function act(a) {
-  const replaces = a === 'new' || a.startsWith('scen:');
-  if (replaces && UI.confirm !== a) { UI.confirm = a; renderUI(true); return; }   // erster Tipp: nachfragen
+  const asks = a === 'new' || /^(scen|raze|consraze):/.test(a);
+  if (asks && UI.confirm !== a) { UI.confirm = a; renderUI(true); return; }   // erster Tipp: nachfragen
   UI.confirm = null;
   if (a === 'speed:0' || a === 'speed:1') setSpeed(+a.slice(6));
   else if (a === 'out') {
-    if (UI.level === 'system') { UI.level = 'galaxy'; centerOn(UI.sys); }
+    if (UI.level === 'ort') { UI.level = 'system'; UI.sheet = null; }
+    else if (UI.level === 'system') { UI.level = 'galaxy'; centerOn(UI.sys); }
     else { const { W, H } = mapSize(); zoomAt(.5, W / 2, H / 2); }
   }
+  else if (a.startsWith('ort:')) { if (UI.sys === S.me) { UI.level = 'ort'; UI.ort = +a.slice(4); UI.sheet = 'ort'; } }
   else if (a === 'front') { openSystem(home()); return; }
   else if (a === 'fronts' || a === 'game') UI.sheet = UI.sheet === a ? null : a;
   else if (a === 'close') { UI.sheet = null; if (UI.level === 'galaxy') UI.sel = null; }
@@ -89,6 +94,7 @@ export function act(a) {
   else if (a === 'import') $('#importFile').click();
   else if (a === 'backup:export') exportBackup();
   else if (a === 'backup:delete') deleteBackup();
+  else { const msg = actOrt(a); if (msg) toast(msg); }
   renderUI(true);
 }
 
@@ -126,20 +132,25 @@ export function renderUI(force) {
   $('#pause').classList.toggle('on', S.speed === 0);
   $('#play').classList.toggle('on', S.speed === 1);
 
+  // Ortsstufe gibt es nur an der aktiven Front (nach einem Sprung zurück zur Systemstufe)
+  if (UI.level === 'ort' && UI.sys !== S.me) { UI.level = 'system'; if (UI.sheet === 'ort') UI.sheet = null; }
   const month = Math.floor(S.year * 12 + 1e-6);
-  const mk = [month, UI.level, UI.sys, UI.sel, UI.cam.x, UI.cam.y, UI.cam.z, S.me].join('|');
+  const mk = [month, UI.level, UI.sys, UI.ort, UI.sel, UI.cam.x, UI.cam.y, UI.cam.z, S.me].join('|');
   if (force || UI.dirty || mk !== mapKey) { mapKey = mk; UI.dirty = false; renderMap(); }
 
   const last = S.log[S.log.length - 1];
-  const sk = [month, UI.level, UI.sys, UI.sel, UI.sheet, UI.confirm, S.seed, S.log.length, last && last.t, hasBackup()].join('|');
+  const sk = [month, UI.level, UI.sys, UI.ort, UI.sel, UI.sheet, UI.confirm, S.seed, S.log.length, last && last.t, hasBackup()].join('|');
   if (!force && sk === sheetKey) return;
   sheetKey = sk;
   const head = $('#head');
-  head.innerHTML = UI.level === 'system' ? headHtml(UI.sys) : '';
-  head.classList.toggle('show', UI.level === 'system');
+  const inSys = UI.level === 'system' || UI.level === 'ort';
+  head.innerHTML = inSys ? headHtml(UI.sys) + (isLive(UI.sys) ? werftHtml() : '') : '';
+  head.classList.toggle('show', inSys);
   const sheet = $('#sheet');
-  sheet.innerHTML = UI.sheet === 'star' && UI.sel !== null ? starHtml(UI.sel) : UI.sheet === 'fronts' ? frontsHtml() : UI.sheet === 'game' ? gameHtml() : '';
+  sheet.innerHTML = UI.sheet === 'star' && UI.sel !== null ? starHtml(UI.sel) : UI.sheet === 'fronts' ? frontsHtml() : UI.sheet === 'game' ? gameHtml()
+    : UI.sheet === 'ort' && UI.level === 'ort' ? ortHtml(UI.confirm) : '';
   sheet.classList.toggle('show', !!UI.sheet);
+  sheet.classList.toggle('ort', UI.sheet === 'ort');
   $('#btnFronts').classList.toggle('on', UI.sheet === 'fronts');
   $('#btnGame').classList.toggle('on', UI.sheet === 'game');
 }

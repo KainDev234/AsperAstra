@@ -4,14 +4,15 @@
  * Pointer Events decken Maus und Touch gemeinsam ab:
  *   Galaxie: 1 Finger ziehen = verschieben, 2 Finger = zoomen; ganz hineinzoomen nahe einem bekannten Stern
  *            öffnet seine Systemstufe; Mausrad = zoomen (am PC); kurzer Tipp = Stern wählen.
- *   System:  2 Finger auseinander/zusammen bzw. Mausrad heraus = zurück zur Galaxie.
+ *   System:  2 Finger zusammen bzw. Mausrad heraus = zurück zur Galaxie; Tipp auf einen Ort der aktiven Front =
+ *            Stufe Ort. Ort: 2 Finger zusammen = zurück zum System.
  * Die Listener werden beim Import dieses Moduls registriert (nur im Browser).
  */
 import { UI } from './state.js';
 import { $ } from './util.js';
-import { zoomAt, starNear, Z_MAX, centerOn } from './map.js';
-import { isKnown } from './view.js';
-import { tapStar, openSystem, renderUI } from './ui.js';
+import { zoomAt, starNear, Z_MAX, ortNear } from './map.js';
+import { isKnown, isLive } from './view.js';
+import { tapStar, openSystem, act } from './ui.js';
 
 const el = $('#map');
 const ptrs = new Map();     // aktive Pointer: id → letzte Position
@@ -25,9 +26,9 @@ const local = e => { const r = el.getBoundingClientRect(); return { x: e.clientX
  * Stern unter dem Punkt, öffnet sich seine Systemstufe.
  */
 function zoom(f, p) {
-  if (UI.level === 'system') {
+  if (UI.level !== 'galaxy') {
     pinch *= f;
-    if (pinch < .75) { pinch = 1; const s = UI.sys; UI.level = 'galaxy'; centerOn(s); renderUI(true); }
+    if (pinch < .75) { pinch = 1; act('out'); }   // eine Stufe heraus
     return;
   }
   if (f > 1 && UI.cam.z >= Z_MAX - 1e-9) {
@@ -65,10 +66,14 @@ el.addEventListener('pointermove', e => {
   }
 });
 
-/** Ende einer Berührung; ein kurzer Tipp ohne Bewegung wählt in der Galaxie einen Stern. */
+/** Ende einer Berührung; ein kurzer Tipp wählt in der Galaxie einen Stern, im System der aktiven Front einen Ort. */
 function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
-  if (ptrs.size === 1 && !moved && e.type === 'pointerup' && UI.level === 'galaxy') { const p = local(e); tapStar(starNear(p.x, p.y)); }
+  if (ptrs.size === 1 && !moved && e.type === 'pointerup') {
+    const p = local(e);
+    if (UI.level === 'galaxy') tapStar(starNear(p.x, p.y));
+    else if (UI.level === 'system' && isLive(UI.sys)) { const o = ortNear(UI.sys, p.x, p.y); if (o !== null) act('ort:' + o); }
+  }
   ptrs.delete(e.pointerId);
 }
 el.addEventListener('pointerup', endPtr);
