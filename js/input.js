@@ -66,18 +66,25 @@ el.addEventListener('pointermove', e => {
   }
 });
 
-/** Ende einer Berührung; ein kurzer Tipp wählt in der Galaxie einen Stern, im System der aktiven Front einen Ort. */
+/** Ende einer Berührung (Abbruch zählt nicht als Tipp). */
 function endPtr(e) {
-  if (!ptrs.has(e.pointerId)) return;
-  if (ptrs.size === 1 && !moved && e.type === 'pointerup') {
-    const p = local(e);
-    if (UI.level === 'galaxy') tapStar(starNear(p.x, p.y));
-    else if (UI.level === 'system' && isLive(UI.sys)) { const o = ortNear(UI.sys, p.x, p.y); if (o !== null) act('ort:' + o); }
-  }
+  if (e.type === 'pointercancel') moved = true;
   ptrs.delete(e.pointerId);
 }
 el.addEventListener('pointerup', endPtr);
 el.addEventListener('pointercancel', endPtr);
+
+/**
+ * Kurzer Tipp: wählt in der Galaxie einen Stern, im System der aktiven Front einen Ort. Ausgewertet erst im
+ * click-Ereignis, nicht schon bei pointerup (#19): Sonst erscheint das Blatt unter dem Finger, bevor der Browser
+ * den Klick desselben Tipps zustellt – und der landet dann auf einem Knopf im Blatt (z. B. „Mine bauen“).
+ */
+el.addEventListener('click', e => {
+  if (moved) return;   // gezogen, gezoomt oder abgebrochen: kein Tipp
+  const p = local(e);
+  if (UI.level === 'galaxy') tapStar(starNear(p.x, p.y));
+  else if (UI.level === 'system' && isLive(UI.sys)) { const o = ortNear(UI.sys, p.x, p.y); if (o !== null) act('ort:' + o); }
+});
 
 // Mausrad am PC
 el.addEventListener('wheel', e => { e.preventDefault(); zoom(Math.exp(-e.deltaY * .0015), local(e)); }, { passive: false });
