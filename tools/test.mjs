@@ -626,7 +626,7 @@ test('Sonde starten: Starten führt zur Galaxie, Sternblatt mit Saatpaket, gespe
   ui.tapStar(t.i);
   assert.match(q('#sheet').innerHTML, /data-a="launch:[0-9]+:mine" disabled>.*keine Sonde bereit/);
   sol.ready = 1; sol.m = 0; ui.renderUI(true);
-  assert.match(q('#sheet').innerHTML, /data-a="launch:[0-9]+:mine" disabled>.*M fehlt/);
+  assert.match(q('#sheet').innerHTML, /data-a="launch:[0-9]+:mine" disabled>.*0\/[0-9]+ M<\/small>/);
   sol.m = 200; sol.b.push({ k: 'werft', o: 4, lv: 1 });
   ui.act('front'); ui.renderUI(true);
   assert.ok(q('#head').innerHTML.includes('data-a="start"'), 'Starten in der Werftleiste');

@@ -202,8 +202,10 @@ function starHtml(s) {
   // Entfernung; für mögliche Sondenziele dazu Flugzeit, Treibstoff und Verlustrisiko („unterwegs“: eine Sonde fliegt hin)
   if (s !== v.i && isKnown(s)) h += `<div class="facts"><span>${d.toFixed(1)} Lj</span></div>`;
   else if (s !== v.i) {
+    // Treibstoff neben dem eigenen Lager („8/13 M“, rot wenn zu wenig); während eines Sprungs nur die Kosten
+    const fuel = fuelCost(v.i, s), me = S.me !== null && sysOf(S.me);
     h += `<div class="facts"><span>${d.toFixed(1)} Lj</span><span>${(d / PROBE.v).toFixed(0)} J Flug</span>`
-      + `<span>${fuelCost(v.i, s)} M</span><span>${targetFree(s) ? Math.round(launchRisk(s) * 100) + ' % Verlust' : 'Sonde unterwegs'}</span></div>`;
+      + (me ? `<span class="${me.m < fuel ? 'warn' : ''}">${Math.floor(me.m)}/${fuel} M</span>` : `<span>${fuel} M</span>`) + `<span>${targetFree(s) ? Math.round(launchRisk(s) * 100) + ' % Verlust' : 'Sonde unterwegs'}</span></div>`;
   }
   if (isKnown(s)) {
     const n = k => st.orte.filter(o => o.k === k).length;
@@ -222,16 +224,18 @@ function starHtml(s) {
 function travelHtml(s) {
   if (S.me === null || s === S.me) return '';
   const me = sysOf(S.me), st = star(s);
-  const btn = (a, label, why) => `<button data-a="${a}"${why ? ' disabled' : ''}>${label}${why ? `<small class="dim">${why}</small>` : ''}</button>`;
+  // Beschriftung einzeilig, Grund darunter gut lesbar (gesperrte Reiseknöpfe sind weniger blass als andere)
+  const btn = (a, label, why) => `<button data-a="${a}"${why ? ' disabled' : ''}><span>${label}</span>${why ? `<small class="warn">${why}</small>` : ''}</button>`;
   if (!isKnown(s)) {
     if (!targetFree(s)) return '';
-    const why = me.ready < 1 ? 'keine Sonde bereit' : me.m < fuelCost(S.me, s) ? 'M fehlt' : '';
-    return `<div class="row build">${btn(`launch:${s}:mine`, `${ico('probe')} Sonde + ${ico('mine')}`, why)}${btn(`launch:${s}:power`, `${ico('probe')} Sonde + ${ico('power')}`, why)}</div>`;
+    const fuel = fuelCost(S.me, s);
+    const why = me.ready < 1 ? 'keine Sonde bereit' : me.m < fuel ? `${Math.floor(me.m)}/${fuel} M` : '';
+    return `<div class="row go">${btn(`launch:${s}:mine`, `${ico('probe')} Sonde + ${ico('mine')}`, why)}${btn(`launch:${s}:power`, `${ico('probe')} Sonde + ${ico('power')}`, why)}</div>`;
   }
   const r = reportOf(s), here = me.b.some(b => b.k === 'sender'), there = r && r.b.sender > 0;
   const why = !here ? 'Sender fehlt hier' : !there ? 'Sender dort nicht gemeldet' : '';
   const a = `jump:${s}`, d = dist(st, star(S.me));
-  return `<div class="row">${UI.confirm === a ? `<button data-a="${a}" class="warn">Sicher? ${d.toFixed(1)} J unterwegs</button>` : btn(a, `Springen · ${d.toFixed(1)} J`, why)}</div>`;
+  return `<div class="row go one">${UI.confirm === a ? `<button data-a="${a}" class="warn">Sicher? ${d.toFixed(1)} J unterwegs</button>` : btn(a, `Springen · ${d.toFixed(1)} J`, why)}</div>`;
 }
 
 /** Schnellsuche „Fronten“: aktive Front, Sol, dann nach Entfernung; je Zeile „Zeigen“. */

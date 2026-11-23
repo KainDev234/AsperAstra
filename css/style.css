@@ -66,6 +66,14 @@ input{font:inherit;color:var(--text);background:#0b0f18;border:1px solid var(--l
 .row.build{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .row.build button{display:flex;flex-direction:column;align-items:flex-start;min-width:0;text-align:left}
 .row.build small{font-size:11px}
+/* Reiseknöpfe im Sternblatt: Beschriftung in einer Zeile, Grund darunter; gesperrt weniger blass, damit er lesbar bleibt */
+.row.go{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.row.go.one{grid-template-columns:1fr}
+.row.go button{display:flex;flex-direction:column;align-items:center;min-width:0}
+.row.go button span{white-space:nowrap}
+.row.go small{font-size:12px}
+.row.go button:disabled{opacity:.7}
+.row.go button:disabled span{opacity:.6}
 .urow button.q{min-height:30px;padding:2px 8px;font-size:12px}
 .acc{color:var(--acc)}
 .werft{display:flex;align-items:center;gap:8px;width:100%;font-size:13px}
