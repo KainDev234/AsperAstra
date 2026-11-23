@@ -166,6 +166,254 @@ test('Logbuch bleibt begrenzt', () => {
   assert.ok(sv.validate(clone(st.S)));
 });
 
+// ---------- Kern-Simulation (#7) ----------
+const GX = await import(new URL('galaxy.js', js));
+/** Monate laufen lassen. */
+const months = n => { for (let i = 0; i < n; i++) sim.step(1 / 12); };
+/** Bauer der aktiven Front mit id 1 (die Kopie in Sol). */
+const me = () => st.S.units.find(u => u.id === 1);
+/** Lässt laufen, bis die Kopie nichts mehr zu tun hat (höchstens n Monate). */
+const untilIdle = (n = 120) => { for (let i = 0; i < n; i++) { const u = me(); if (!u.q.length && !u.job && !u.mv) return; sim.step(1 / 12); } };
+
+/**
+ * Einfacher Spieler für Sol (Testhilfe): Minen, Sender, Werft, Kraftwerk, dann Sonden zum nächsten freien
+ * Stern, solange das Risiko höchstens 8 % ist. Ruft die übrigen Fronten nicht an – die laufen nach Regel.
+ */
+function soloPlayer(start = 0) {
+  const plan = [[{ a: 'move', o: 5 }, { a: 'build', k: 'mine' }], [{ a: 'build', k: 'mine' }], [{ a: 'move', o: 3 }, { a: 'build', k: 'mine' }],
+    [{ a: 'move', o: 0 }, { a: 'build', k: 'sender' }], [{ a: 'move', o: 6 }, { a: 'build', k: 'power' }], [{ a: 'move', o: 4 }, { a: 'build', k: 'werft' }]];
+  let i = start;
+  return () => {
+    const S = st.S, u = me();
+    if (S.me !== 0) return;
+    if (!u.q.length && !u.job && !u.mv && i < plan.length) for (const it of plan[i++]) sim.order(1, it);
+    const sol = sim.sysOf(0);
+    if (i >= plan.length && !sol.pq && sol.pj === null) sim.orderProbe();
+    if (sol.ready && sim.launchRisk() <= .08) {
+      const t = sim.stars().filter(x => sim.targetFree(x.i)).sort((a, b) => U.dist(a, sim.star(0)) - U.dist(b, sim.star(0)))[0];
+      if (t) sim.launchProbe(t.i, 'mine');
+    }
+  };
+}
+
+test('Galaxie: aus dem Seed, Sol mit echten Planeten, Mindestabstand', () => {
+  const g = GX.galaxy(4242);
+  assert.equal(g.length, D.GALAXY.n);
+  assert.equal(JSON.stringify(GX.galaxy(4242)), JSON.stringify(g));
+  assert.notEqual(JSON.stringify(GX.galaxy(4243)), JSON.stringify(g));
+  assert.deepEqual(g[0].orte.map(o => o.n), ['Sol', 'Merkur', 'Venus', 'Erde', 'Mars', 'Gürtel', 'Jupiter', 'Saturn', 'Uranus', 'Neptun']);
+  for (const s of g) {
+    assert.equal(s.orte[0].k, 'star');
+    assert.ok(Math.hypot(s.x, s.y) <= D.GALAXY.r + 1e-9);
+    assert.ok(g.every(t => t === s || U.dist(s, t) >= D.GALAXY.minD));
+    if (s.spec === 'richBelt') assert.ok(s.orte.some(o => o.k === 'belt'));
+    if (s.spec === 'gasPower') assert.ok(s.orte.some(o => o.k === 'gas'));
+  }
+  assert.equal(new Set(g.map(s => s.name)).size, g.length, 'Namen eindeutig');
+});
+
+test('Energie: ohne Kraftwerk fördert keine Mine, zu wenig drosselt anteilig', () => {
+  sim.newGame(1); const S = st.S, sol = sim.sysOf(0);
+  sol.b = [{ k: 'mine', o: 5, lv: 1 }];
+  assert.equal(sim.income(sol), 0);
+  sol.b.push({ k: 'power', o: 0, lv: 1 }, { k: 'werft', o: 4, lv: 1 }, { k: 'sender', o: 0, lv: 1 });   // 4 Energie, Bedarf 5
+  const e = sim.energy(sol);
+  assert.deepEqual([e.gen, e.need, e.f], [4, 5, .8]);
+  assert.equal(sim.income(sol), D.MINE_RATE[1] * D.BELT_MULT * .8);
+  const m0 = sol.m; months(12);
+  assert.ok(Math.abs(sol.m - m0 - D.MINE_RATE[1] * D.BELT_MULT * .8) < 1e-6);
+  assert.ok(Math.abs(S.year - D.START_YEAR - 1) < 1e-9);
+});
+
+test('Bauen: nur am eigenen Ort, Kosten beim Beginn, Plätze, Warten, Ausbau, Abriss', () => {
+  sim.newGame(1); const S = st.S, sol = sim.sysOf(0), u = me();
+  assert.equal(u.o, D.EARTH);
+  // Sender geht nur am Stern: an der Erde wartet der Auftrag
+  assert.equal(sim.order(1, { a: 'build', k: 'sender' }), '');
+  sim.step(1 / 12);
+  assert.equal(u.wait, 'ort'); assert.equal(sol.m, D.START_MATTER, 'nichts bezahlt');
+  sim.unorder(1, 0); assert.equal(u.wait, undefined);
+  // zwei Minen auf der Erde, die dritte findet keinen Platz
+  sim.order(1, { a: 'build', k: 'mine' }); sim.order(1, { a: 'build', k: 'mine' }); sim.order(1, { a: 'build', k: 'mine' });
+  assert.equal(sim.order(1, { a: 'build', k: 'mine' }), 'voll');
+  sim.step(1 / 12);
+  assert.equal(sol.m, D.START_MATTER - D.BUILD.mine.cost, 'beim Beginn bezahlt');
+  untilIdle(24);   // die dritte Mine bleibt stehen
+  assert.equal(sol.b.filter(b => b.k === 'mine' && b.o === D.EARTH).length, 2);
+  assert.equal(u.wait, 'slots'); assert.equal(u.q.length, 1); sim.unorder(1, 0);
+  // Materie fehlt: Ausbau wartet (ohne Kraftwerk fördern die Minen nicht, die Rechnung bleibt glatt)
+  sol.b = sol.b.filter(b => b.k !== 'power');
+  sol.m = 5; sim.order(1, { a: 'up', k: 'mine' }); sim.step(1 / 12);
+  assert.equal(u.wait, 'matter');
+  sol.m = 100; untilIdle(24);
+  assert.equal(sol.b.filter(b => b.k === 'mine' && b.lv === 2).length, 1);
+  assert.equal(sol.m, 100 - D.BUILD.mine.up);
+  // Abriss sofort, mit Erstattung; zuerst die niedrigere Stufe
+  sim.order(1, { a: 'raze', k: 'mine' }); sim.step(1 / 12);
+  assert.equal(sol.m, 100 - D.BUILD.mine.up + D.RAZE_BACK * D.BUILD.mine.cost);
+  assert.deepEqual(sol.b.filter(b => b.k === 'mine').map(b => b.lv), [2]);
+  // ungültige Aufträge und Befehle an ferne Bauer werden abgelehnt
+  assert.equal(sim.order(1, { a: 'up', k: 'sender' }), 'ungültig');
+  assert.equal(sim.order(1, { a: 'move', o: 99 }), 'ungültig');
+  assert.equal(sim.order(1, { a: 'build', k: '__proto__' }), 'ungültig');
+  assert.equal(sim.order(99, { a: 'cons' }), 'fern');
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Konstruktor: bauen, eigenes Bautempo, verlegen, ausbauen, abbauen', () => {
+  sim.newGame(1); const S = st.S, sol = sim.sysOf(0); sol.m = 200;
+  sim.order(1, { a: 'cons' }); untilIdle();
+  const c = S.units.find(x => x.k === 'cons');
+  assert.ok(c && c.o === D.EARTH && c.lv === 1);
+  assert.equal(sol.m, 200 - D.CONS.cost);
+  // er baut selbst, auch woanders; Reisezeit im System 1–3 Monate
+  sim.order(c.id, { a: 'move', o: 5 }); sim.order(c.id, { a: 'build', k: 'mine' });
+  const t = sim.moveTime(sim.star(0), D.EARTH, 5);
+  assert.ok(t >= D.MOVE_T[0] && t <= D.MOVE_T[1]);
+  months(1); assert.ok(c.mv || c.o === 5);
+  months(12); assert.ok(sol.b.some(b => b.k === 'mine' && b.o === 5));
+  // Ausbau durch einen Bauer am selben Ort: doppeltes Tempo
+  sim.order(1, { a: 'move', o: 5 }); sim.order(1, { a: 'consup', id: c.id }); untilIdle();
+  assert.equal(c.lv, 2); assert.equal(sim.speedOf(c), 2);
+  sim.order(1, { a: 'consraze', id: c.id }); untilIdle();
+  assert.ok(!S.units.includes(c));
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Sonde: Werft nötig, Bau, Start mit Risiko, Ankunft mit Saatpaket, Nachricht mit c', () => {
+  sim.newGame(2); const S = st.S, sol = sim.sysOf(0); sol.m = 500;
+  assert.equal(sim.orderProbe(), 'werft');
+  sol.b.push({ k: 'werft', o: 4, lv: 1 }, { k: 'power', o: 6, lv: 1 });
+  assert.equal(sim.orderProbe(), '');
+  months(12);
+  assert.equal(sol.ready, 1); assert.equal(sol.m, 500 - D.PROBE.cost);
+  assert.equal(sim.launchProbe(0, 'mine'), 'ziel');
+  const t = sim.stars().slice(1).sort((a, b) => U.dist(a, sim.star(0)) - U.dist(b, sim.star(0)))[0];
+  assert.equal(sim.launchProbe(t.i, 'kuchen'), 'saat');
+  assert.equal(sim.launchProbe(t.i, 'power'), '');
+  const p = S.probes[0], d = U.dist(t, sim.star(0));
+  assert.equal(p.risk, 0, 'erste Sonde ohne Risiko');
+  assert.ok(Math.abs(p.at - S.year - d / D.PROBE.v) < 1e-9);
+  assert.ok(!sim.targetFree(t.i), 'Ziel vergeben');
+  sol.ready = 1;
+  assert.equal(sim.launchRisk(), D.PROBE.risk, 'die zweite trägt das Risiko der ersten');
+  sol.ready = 0;
+  // Ankunft: System mit Saatpaket und Kopie; die Nachricht kommt d Jahre später
+  while (!sim.sysOf(t.i)) sim.step(1 / 12);
+  const arr = S.year, ny = sim.sysOf(t.i);
+  assert.equal(ny.m, D.PROBE.seedM); assert.deepEqual(ny.b.map(b => b.k), ['power']);
+  assert.equal(sim.copyOf(t.i).o, ny.b[0].o, 'Kopie am Ort des Saatpakets');
+  assert.ok(!S.known.includes(t.i), 'noch nicht bekannt');
+  while (!S.known.includes(t.i)) sim.step(1 / 12);
+  assert.ok(Math.abs(S.year - arr - d) < 1 / 12 + 1e-9);
+  assert.ok(S.log.some(e => e.t === `Sonde angekommen: ${t.name}.`));
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Sonde: Verlust nach Risiko, mit Nachricht', () => {
+  sim.newGame(3); const S = st.S, sol = sim.sysOf(0);
+  sol.ready = 1;
+  const t = sim.stars()[1];
+  sim.launchProbe(t.i, 'mine');
+  S.probes[0].risk = 1;
+  for (let i = 0; i < 12 * 400 && !S.log.some(e => e.c === 'warn'); i++) sim.step(1 / 12);
+  assert.ok(!sim.sysOf(t.i));
+  assert.ok(S.log.some(e => e.t === `Sonde nach ${t.name} verloren.`));
+  assert.ok(sim.targetFree(t.i), 'Ziel wieder frei');
+});
+
+test('Ferne Front: feste Regel – erst Mine, dann Sender, Energie vor Verbrauchern, später Sonden', () => {
+  sim.newGame(4); const S = st.S;
+  const t = sim.stars().slice(1).sort((a, b) => U.dist(a, sim.star(0)) - U.dist(b, sim.star(0)))[0];
+  sim.sysOf(0).ready = 1; sim.launchProbe(t.i, 'mine');
+  while (!sim.sysOf(t.i)) sim.step(1 / 12);
+  const f = sim.sysOf(t.i), order = [];
+  for (let i = 0; i < 12 * 200; i++) {
+    sim.step(1 / 12);
+    for (const b of f.b) if (!order.includes(b.k)) order.push(b.k);
+  }
+  assert.equal(order[0], 'mine', 'Saatpaket');
+  assert.ok(order.indexOf('sender') >= 0, 'Sender gebaut: ' + order);
+  assert.ok(order.indexOf('sender') < order.indexOf('werft'), 'Sender vor Werft: ' + order);
+  assert.ok(f.b.some(b => b.k === 'power'), 'Kraftwerk für den Bedarf');
+  assert.ok(S.sys.length > 2 || S.probes.length || f.ready, 'die Front reproduziert sich');
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Sprung: braucht Sender an beiden Enden, dauert die Entfernung, wechselt die Front', () => {
+  sim.newGame(5); const S = st.S;
+  const t = sim.stars()[1];
+  S.sys.push({ s: t.i, m: 0, b: [], pq: 0, pj: null, ready: 0 });
+  S.units.push({ id: S.nextId++, k: 'copy', s: t.i, o: 0, lv: 1, q: [], job: null, mv: null });
+  assert.equal(sim.jump(t.i), 'sender');
+  sim.sysOf(0).b.push({ k: 'sender', o: 0, lv: 1 });
+  sim.sysOf(t.i).b.push({ k: 'sender', o: 0, lv: 1 });
+  assert.equal(sim.jump(0), 'ziel');
+  assert.equal(sim.jump(t.i), '');
+  assert.equal(S.me, null);
+  assert.equal(sim.order(1, { a: 'cons' }), 'fern', 'unterwegs keine Befehle');
+  assert.equal(sim.jump(0), 'unterwegs');
+  assert.ok(sv.validate(clone(S)));
+  const y0 = S.year, d = U.dist(t, sim.star(0));
+  while (S.me === null) sim.step(1 / 12);
+  assert.equal(S.me, t.i);
+  assert.ok(S.year - y0 >= d - 1e-9 && S.year - y0 < d + 1 / 12 + 1e-9);
+  assert.ok(S.known.includes(t.i));
+  // Sol ist jetzt ferne Front: baut nach Regel, und ihr Bericht kommt mit c an
+  for (let i = 0; i < 12 * Math.ceil(d + 2); i++) sim.step(1 / 12);
+  const r = S.rep.find(x => x.s === 0);
+  assert.ok(r && S.year - r.y >= d - 1, 'Bericht ist mindestens die Lichtlaufzeit alt');
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Langer Lauf: deterministisch, Spielstand bleibt gültig, Laden setzt exakt fort', () => {
+  const play = (seed, years, cut) => {
+    sim.newGame(seed); const p = soloPlayer();
+    let saved = null;
+    for (let i = 0; i < 12 * years; i++) {
+      p(); sim.step(1 / 12);
+      if (i % 120 === 0) assert.ok(sv.validate(clone(st.S)), 'gültig im Jahr ' + Math.floor(st.S.year));
+      if (cut && i === 12 * cut) saved = JSON.stringify(st.S);
+    }
+    return { end: JSON.stringify(st.S), saved };
+  };
+  const a = play(77, 250, 100), b = play(77, 250);
+  assert.equal(a.end, b.end, 'gleicher Seed, gleiche Aktionen → gleicher Verlauf');
+  assert.ok(JSON.parse(a.end).sys.length >= 3, 'Ausbreitung');
+  // ab Jahr 100 geladen und mit demselben Spieler weiter (sein Plan ist dann abgearbeitet): gleiches Ende
+  assert.equal(sv.importText(a.saved), 'ok');
+  const p = soloPlayer(6);
+  for (let i = 12 * 100 + 1; i < 12 * 250; i++) { p(); sim.step(1 / 12); }
+  assert.equal(JSON.stringify(st.S), a.end);
+});
+
+test('Prüfung: Kern-Felder – Verweise, Plätze, Kopien, Front', () => {
+  sim.newGame(6); const ok = clone(st.S);
+  ok.units[0].q.push({ a: 'build', k: 'mine' });
+  assert.ok(sv.validate(ok));
+  const bad = [
+    d => { d.units.push({ ...d.units[0], id: 9 }); d.nextId = 10; },          // zweite Kopie
+    d => { d.units[0].s = 1; },                                              // Bauer ohne System
+    d => { d.units.push({ ...d.units[0], k: 'cons', id: 1 }); },             // doppelte id
+    d => { d.nextId = 1; },                                                  // id nicht kleiner als nextId
+    d => { d.sys[0].b.push({ k: 'sender', o: 0, lv: 1 }, { k: 'power', o: 0, lv: 1 }); },   // drei Gebäude an der Station
+    d => { d.sys[0].b.push({ k: 'mine', o: 0, lv: 1 }); },                   // Mine an der Station
+    d => { d.sys[0].b.push({ k: 'sender', o: 0, lv: 2 }); },                 // Sender hat keine Stufe II
+    d => { d.me = null; },                                                   // weder Front noch Sprung
+    d => { d.jump = { to: 0, at: d.year + 1 }; },                            // beides
+    d => { d.units[0].q.push({ a: 'move', o: 50 }); },
+    d => { d.units[0].q.push({ a: 'build', k: 'mine', x: 1 }); },
+    d => { d.units[0].job = { a: 'build', k: 'mine', o: 2, left: .5 }; },    // Auftrag an anderem Ort als der Bauer
+    d => { d.probes.push({ id: 5, from: 0, to: 0, at: d.year + 1, seed: 'mine', two: false, risk: 0 }); d.nextId = 6; },
+    d => { d.mail.push({ at: d.year + 1, k: 'rep', s: 0, d: { y: d.year, m: -1, b: {}, cons: 0, ready: 0 } }); },
+    d => { d.mail.push({ at: d.year + 1, k: 'gift', s: 0 }); },
+    d => { d.known.push(0); },
+    d => { d.sys[0].m = Infinity; },
+    d => { delete d.rep; },
+  ];
+  for (const f of bad) { const d = clone(ok); f(d); assert.equal(sv.validate(d), false, f.toString()); }
+});
+
 // ---------- Oberfläche ----------
 test('Oberfläche: Statusleiste, Aktionen, neues Spiel erst nach Nachfrage', () => {
   store.clear(); sim.newGame(12);

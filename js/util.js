@@ -24,6 +24,20 @@ export function rngStep(a) {
   return [((t ^ t >>> 14) >>> 0) / 4294967296, a];
 }
 
+/**
+ * Zufallsgenerator als Funktion (Mulberry32, wie rngStep) für die Erzeugung der Galaxie: gleicher Startwert →
+ * gleiche Zahlenfolge. Übernommen aus Replikator.
+ */
+export function rng(a) {
+  return () => { const [v, n] = rngStep(a); a = n; return v; };
+}
+
+/** Abstand zweier Objekte mit x/y-Koordinaten (in Lichtjahren). */
+export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** Römische Zahl für kleine Zahlen (Planetennamen, Stufen). */
+export const roman = n => ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'][n] || String(n);
+
 /** Höchster Seed + 1: Seeds sind ganze Zahlen von 0 bis 2^32 − 1. */
 export const SEED_RANGE = 2 ** 32;
 

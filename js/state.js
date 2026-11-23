@@ -9,8 +9,16 @@
  * Gesamter speicherbarer Spielstand (wird 1:1 als JSON gespeichert, siehe save.js):
  *   v = Version des Formats, seed = Seed der Partie, rng = Zustand des Simulations-Zufalls,
  *   year = Spieljahr, speed = 0 (Pause) oder 1 (Laufen), tempo = { n: Stufe in TEMPO },
- *   log = Logbuch [{ y: Jahr, t: Text, c?: Klasse }].
- * Aufbau siehe sim.newGame().
+ *   log = Logbuch [{ y: Jahr, t: Text, c?: Klasse }],
+ *   me = Stern der aktiven Front (null während eines Sprungs), jump = { to, at } oder null,
+ *   sys = Systeme mit Kopie [{ s: Stern, m: Materie, b: Gebäude [{ k, o: Ort, lv }], pq: Sonden in Auftrag,
+ *     pj: Restbauzeit der laufenden Sonde oder null, ready: fertige Sonden }],
+ *   units = Bauer [{ id, k: 'copy' | 'cons', s, o, lv, q: Warteschlange, job: laufender Auftrag oder null,
+ *     mv: Reise im System { o, t } oder null, wait?: Grund, warum der erste Auftrag wartet }],
+ *   nextId = nächste freie id (Bauer und Sonden), probes = Sonden im Flug [{ id, from, to, at, seed, two, risk }],
+ *   known = Sterne mit bekanntem Fund, mail = Nachrichten unterwegs zum Spieler [{ at, k, s, d? }],
+ *   rep = zuletzt angekommener Bericht je System, nextRep = Jahr des nächsten Berichts.
+ * Die Galaxie selbst steht nicht im Spielstand (galaxy.js, aus dem Seed). Aufbau siehe sim.newGame().
  */
 export let S = null;
 
