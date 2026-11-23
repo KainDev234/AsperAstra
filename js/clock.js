@@ -45,5 +45,5 @@ export function halt() {
 /** Pause (0) oder Laufen (1). */
 export function setSpeed(v) { S.speed = v ? 1 : 0; }
 
-/** Nächste Tempostufe, nach der schnellsten wieder die langsamste. */
-export function cycleTempo() { S.tempo.n = (S.tempo.n + 1) % TEMPO.length; }
+/** Tempostufe n (Schieberegler, #13), begrenzt auf die vorhandenen Stufen. */
+export function setTempo(n) { S.tempo.n = Math.max(0, Math.min(TEMPO.length - 1, Math.round(+n) || 0)); }

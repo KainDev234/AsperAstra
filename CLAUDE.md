@@ -31,8 +31,14 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
   bauen nach der festen Regel `planFront` (keine Anweisungen in Phase 3). Nachrichten und Berichte reisen mit c
   (`S.mail`); was der Spieler über ferne Systeme weiß, steht in `S.known` und `S.rep`, nicht in `S.sys`.
 
+- **Oberfläche** (#13): eine zoombare Karte mit Stufen (Galaxie, System; Ort folgt) statt Reitern, gezeichnet als
+  SVG in Bildschirmkoordinaten (`map.js`), Gesten in `input.js`. In der Karte **keine `<text>`-Elemente**: Zahlen
+  als Pfade (`icons.markPath`), Namen und Werte in den Blättern. Feste Bedienleiste unten (Herauszoomen, Zur Front,
+  Fronten) außerhalb jedes scrollenden Bereichs. Die Oberfläche liest nur über `view.js`, was der Spieler weiß.
+
 ## Starten & Testen
-- Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen.
+- Spiel: `node server.js` (Port 8080, anderer Port mit `PORT=…`), dann im Browser öffnen. Der Stand von `main`
+  ist außerdem über GitHub Pages spielbar: https://kaindev234.github.io/AsperAstra/
 - Tests: `node tools/test.mjs` (ohne Abhängigkeiten; Attrappen für `localStorage` und DOM).
 - Bot: `node tools/bot.mjs [Seeds] [Jahre]` misst den Spielfluss (Entscheidungen je Jahr, Leerlauf, Lager zu
   Einkommen, Auslastung, Ausbreitung, Ertragslatenz). Sein Spieler steht in `js/bot.js` und nutzt nur

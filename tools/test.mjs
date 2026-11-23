@@ -31,7 +31,7 @@ const fakeEl = () => {
     addEventListener() {}, closest: () => null, click() {} };
 };
 const els = new Map();
-globalThis.document = { querySelector: s => els.get(s) || els.set(s, fakeEl()).get(s), addEventListener() {}, createElement: () => fakeEl(), body: fakeEl() };
+globalThis.document = { querySelector: s => els.get(s) || els.set(s, fakeEl()).get(s), addEventListener() {}, createElement: () => fakeEl(), body: fakeEl(), activeElement: null };
 globalThis.window = { addEventListener() {} };
 
 const js = new URL('../js/', import.meta.url);
@@ -94,7 +94,9 @@ test('Pause lässt keine Zeit vergehen, Laufen nach Tempo', () => {
   clock.setSpeed(1); S.tempo.n = 7;   // 1 Jahr je Sekunde
   clock.advance(.5);
   assert.ok(Math.abs(S.year - y0 - .5) < 1e-9);
-  clock.cycleTempo(); assert.equal(S.tempo.n, 0, 'nach der schnellsten Stufe die langsamste');
+  clock.setTempo(2); assert.equal(S.tempo.n, 2);
+  clock.setTempo(99); assert.equal(S.tempo.n, D.TEMPO.length - 1, 'begrenzt');
+  clock.setTempo('x'); assert.equal(S.tempo.n, 0);
 });
 test('Ereignisse halten an: gesammelt, Doppelte einmal, ins Logbuch', () => {
   sim.newGame(1); const S = st.S;
@@ -418,6 +420,8 @@ test('Prüfung: Kern-Felder – Verweise, Plätze, Kopien, Front', () => {
 // ---------- Bot und Testspielstände (#9) ----------
 const BOT = await import(new URL('bot.js', js));
 const SC = await import(new URL('scenarios.js', js));
+const VW = await import(new URL('view.js', js));
+const MP = await import(new URL('map.js', js));
 
 test('Bot: entscheidet nur über Spielerbefehle, breitet sich aus, Stand bleibt gültig', () => {
   sim.newGame(31); const kinds = {};
@@ -446,32 +450,100 @@ test('Testspielstände: erreichen ihre Lage, immer gleich, gültig, auf Pause', 
 });
 
 // ---------- Oberfläche ----------
-test('Oberfläche: Statusleiste, Aktionen, neues Spiel erst nach Nachfrage', () => {
-  store.clear(); sim.newGame(12);
+test('Oberfläche: Statusleiste, Tempo, Blatt „Spiel“, neues Spiel und Testspielstand erst nach Nachfrage', () => {
+  store.clear(); sim.newGame(12); ui.restart();
   ui.renderUI(true);
   const q = s => document.querySelector(s);
   assert.equal(q('#tYear').textContent, 'Jan ' + D.START_YEAR);
   assert.ok(q('#pause').classList.contains('on'));
   ui.act('speed:1');
   assert.equal(st.S.speed, 1); assert.ok(q('#play').classList.contains('on'));
-  ui.act('tempo'); assert.equal(q('#tTempo').textContent, D.TEMPO[D.TEMPO_DEFAULT + 1].n);
+  clock.setTempo(4); ui.renderUI(false);
+  assert.equal(q('#tTempo').textContent, D.TEMPO[4].n); assert.equal(q('#tempo').value, '4');
+  ui.act('game');
+  assert.ok(q('#sheet').classList.contains('show'));
   sim.log('<b>fett</b>'); ui.renderUI(false);
-  assert.ok(q('#panel').innerHTML.includes('&lt;b&gt;fett'), 'Logbuch wird maskiert');
+  assert.ok(q('#sheet').innerHTML.includes('&lt;b&gt;fett'), 'Logbuch wird maskiert');
   q('#seed').value = '777';
   ui.act('new');
   assert.equal(st.S.seed, 12, 'erster Tipp fragt nur nach');
-  assert.ok(q('#panel').innerHTML.includes('Sicher?'));
+  assert.ok(q('#sheet').innerHTML.includes('Sicher?'));
   ui.act('new');
   assert.equal(st.S.seed, 777);
   assert.ok(store.get(D.SAVE_KEY), 'sofort gespeichert');
+  assert.equal(st.UI.sheet, null, 'Blatt nach neuem Spiel zu');
+  ui.act('game');
   // Testspielstand: ebenfalls erst nach Nachfrage; eine andere Aktion dazwischen hebt die Nachfrage auf
   ui.act('scen:probe'); ui.act('speed:1'); ui.act('scen:probe');
   assert.equal(st.S.seed, 777, 'Nachfrage aufgehoben');
   ui.act('scen:probe');
   assert.equal(st.S.seed, SC.SCENARIO_SEED); assert.ok(st.S.probes.length);
-  assert.ok(q('#panel').innerHTML.includes('Erste Sonde'));
   ui.importFile('{kaputt');
   assert.equal(st.S.seed, SC.SCENARIO_SEED, 'kaputte Datei ändert nichts');
+});
+
+test('Karte (#13): Galaxie ohne Schrift, Ringe und Plaketten, Stern wählen, Systemstufe, Bedienleiste', () => {
+  SC.loadScenario('fronts'); ui.restart();
+  const q = s => document.querySelector(s), S = st.S, U2 = st.UI;
+  ui.renderUI(true);
+  let m = q('#map').innerHTML;
+  assert.ok(!m.includes('<text'), 'keine Schrift in der Karte');
+  assert.ok((m.match(/class="ring"/g) || []).length >= 2, 'Ringe für eigene Systeme');
+  assert.ok(m.includes('class="digit"'), 'Plakette mit Berichtsalter');
+  // Stern wählen: Sternblatt mit Fakten, unbekannter Fund
+  const far = sim.stars().find(s => !VW.isKnown(s.i) && sim.targetFree(s.i));
+  ui.tapStar(far.i);
+  assert.equal(U2.sheet, 'star');
+  let h = q('#sheet').innerHTML;
+  assert.ok(h.includes(' Lj') && h.includes('J Flug') && h.includes('% Verlust') && h.includes('Fund unbekannt'));
+  ui.tapStar(null); assert.equal(U2.sheet, null);
+  // Systemstufe der aktiven Front: Kopfzeile live, Bauplätze und Bauer
+  ui.act('front');
+  assert.equal(U2.level, 'system'); assert.equal(U2.sys, S.me);
+  m = q('#map').innerHTML;
+  assert.ok(!m.includes('<text'));
+  assert.ok(m.includes('class="slot full"') && m.includes('unit copy'), 'Gebäude und Sonde');
+  assert.ok(q('#head').innerHTML.includes(' M') && q('#head').classList.contains('show'));
+  // ferne Front: Bericht statt Live-Stand
+  const f = S.rep.find(r => r.s !== S.me);
+  ui.act('sys:' + f.s);
+  assert.ok(q('#head').innerHTML.includes('vor '));
+  assert.ok(!q('#map').innerHTML.includes('unit '), 'ferne Bauer unbekannt');
+  // Herauszoomen: zurück zur Galaxie, auf den Stern
+  ui.act('out');
+  assert.equal(U2.level, 'galaxy');
+  assert.equal(U2.cam.x, sim.star(f.s).x);
+  const z = U2.cam.z; ui.act('out'); assert.ok(U2.cam.z < z, 'weiter herauszoomen');
+  assert.ok(U2.cam.z >= MP.Z_MIN);
+});
+
+test('Fronten (#13): aktive Front zuerst, Sol an zweiter Stelle, dann nach Entfernung; Zeigen', () => {
+  SC.loadScenario('fronts'); const S = st.S;
+  // Spieler steht woanders: Front springen lassen
+  const f = S.rep.find(r => r.s !== 0).s;
+  while (S.me === 0) { if (sim.jump(f) === '') break; }
+  while (S.me === null) sim.step(1 / 12);
+  const list = VW.frontList();
+  assert.equal(list[0].s, f); assert.equal(list[0].age, 0);
+  assert.equal(list[1].s, 0, 'Sol an zweiter Stelle');
+  for (let i = 3; i < list.length; i++) assert.ok(list[i].d >= list[i - 1].d);
+  ui.act('fronts');
+  const h = document.querySelector('#sheet').innerHTML;
+  assert.ok(h.indexOf('data-a="sys:' + f + '"') < h.indexOf('data-a="sys:0"'));
+  ui.act('sys:0'); assert.equal(st.UI.level, 'system'); assert.equal(st.UI.sys, 0);
+});
+
+test('Sicht (#13): Sonden erst sichtbar, wenn das Licht vom Start da ist', () => {
+  sim.newGame(8); const S = st.S;
+  // eine Sonde startet jetzt an einem Stern 5+ Lj von Sol entfernt (ihr Flug dauert länger als das Licht)
+  const t = sim.stars().slice(1).find(s => U.dist(s, sim.star(0)) > 5), to = sim.stars().find(s => s.i && s !== t);
+  const d = U.dist(t, sim.star(0)), fly = U.dist(t, to) / D.PROBE.v;
+  S.probes.push({ id: S.nextId++, from: t.i, to: to.i, at: S.year + fly, seed: 'mine', two: false, risk: 0 });
+  assert.equal(VW.probesSeen().length, 0, 'noch nicht sichtbar');
+  S.year += d - .1; assert.equal(VW.probesSeen().length, 0, 'kurz vorher noch nicht');
+  S.year += .2; assert.equal(VW.probesSeen().length, 1, 'nach der Lichtlaufzeit sichtbar');
+  const p = VW.probePos(S.probes[0]), f = (d + .1) / fly;
+  assert.ok(Math.abs(p.x - (t.x + (to.x - t.x) * Math.min(1, f))) < 1e-9);
 });
 
 // ---------- Server ----------
