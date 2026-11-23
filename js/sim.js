@@ -307,24 +307,30 @@ export function orderProbe() {
   return '';
 }
 
-/** Verlustrisiko einer jetzt startenden Sonde: PROBE.risk je anderer Sonde, die gerade fliegt. */
-export const launchRisk = () => Math.min(1, PROBE.risk * S.probes.length);
+/**
+ * Verlustrisiko einer jetzt zu Stern to startenden Sonde (#11): PROBE.risk je anderer fliegender Sonde, deren Ziel
+ * höchstens PROBE.riskR Lj von to entfernt ist.
+ */
+export const launchRisk = to => Math.min(1, PROBE.risk * S.probes.filter(p => dist(star(p.to), star(to)) <= PROBE.riskR).length);
+
+/** Treibstoff für den Flug von Stern a nach b (M), beim Start fällig (#11). */
+export const fuelCost = (a, b) => Math.round(PROBE.fuel * dist(star(a), star(b)));
 
 /** Ist Stern t ein mögliches Sondenziel (kein System, keine Sonde dorthin unterwegs)? */
 export const targetFree = t => !sysOf(t) && !S.probes.some(p => p.to === t);
 
 /** Startet eine fertige Sonde aus System sys zu Stern to mit Saatpaket seed ('mine' | 'power'). */
 function launch(sys, to, seed) {
-  const risk = launchRisk();
+  const risk = launchRisk(to), fuel = fuelCost(sys.s, to);
   const from = star(sys.s), dest = star(to);
-  sys.ready--;
+  sys.ready--; sys.m = Math.max(0, sys.m - fuel);
   S.probes.push({ id: S.nextId++, from: sys.s, to, at: S.year + dist(from, dest) / PROBE.v, seed, two: sys.b.some(b => b.k === 'werft' && b.lv > 1), risk });
-  if (S.me === sys.s) log(`Sonde startet nach ${dest.name} (${(dist(from, dest) / PROBE.v).toFixed(0)} Jahre, Verlustrisiko ${Math.round(risk * 100)} %).`);
+  if (S.me === sys.s) log(`Sonde startet nach ${dest.name} (${(dist(from, dest) / PROBE.v).toFixed(0)} Jahre, ${fuel} M Treibstoff, Verlustrisiko ${Math.round(risk * 100)} %).`);
 }
 
 /**
  * Startet eine fertige Sonde der aktiven Front.
- * @returns {''|'fern'|'keine'|'ziel'|'saat'}
+ * @returns {''|'fern'|'keine'|'ziel'|'saat'|'materie'} materie = zu wenig für den Treibstoff
  */
 export function launchProbe(to, seed) {
   const sys = S.me !== null && sysOf(S.me);
@@ -332,6 +338,7 @@ export function launchProbe(to, seed) {
   if (sys.ready < 1) return 'keine';
   if (!Number.isInteger(to) || !star(to) || !targetFree(to)) return 'ziel';
   if (seed !== 'mine' && seed !== 'power') return 'saat';
+  if (sys.m + EPS < fuelCost(sys.s, to)) return 'materie';
   launch(sys, to, seed);
   return '';
 }
@@ -384,14 +391,26 @@ export function frontPlan(sys, u) {
   return b ? [...(b.o !== u.o ? [{ a: 'move', o: b.o }] : []), { a: 'up', k: 'mine' }] : [];
 }
 
-/** Ferne Front: Sonde in Auftrag geben, sobald Werft und Materie da sind; fertige Sonden zum nächsten freien Stern. */
+/**
+ * Nächstes Ziel einer fernen Front (#11): der nächste freie Stern, zu dem das Verlustrisiko höchstens
+ * FRONT_RISK_MAX ist; -1 = keiner. (Auch vom Bot genutzt.)
+ */
+export function frontTarget(s) {
+  const here = star(s);
+  let best = -1, bd = Infinity;
+  for (const t of stars()) if (targetFree(t.i) && launchRisk(t.i) <= FRONT_RISK_MAX + EPS) { const d = dist(here, t); if (d < bd) { bd = d; best = t.i; } }
+  return best;
+}
+
+/**
+ * Ferne Front: Sonde in Auftrag geben, sobald Werft und Materie da sind; fertige Sonden zum nächsten freien Stern
+ * mit tragbarem Risiko, sobald der Treibstoff reicht.
+ */
 function frontProbes(sys) {
   if (!sys.pq && sys.pj === null && !sys.ready && sys.b.some(b => b.k === 'werft') && sys.m >= PROBE.cost) sys.pq = 1;
-  if (sys.ready < 1 || launchRisk() > FRONT_RISK_MAX + EPS) return;
-  const here = star(sys.s);
-  let best = -1, bd = Infinity;
-  for (const t of stars()) if (targetFree(t.i)) { const d = dist(here, t); if (d < bd) { bd = d; best = t.i; } }
-  if (best >= 0) launch(sys, best, 'mine');
+  if (sys.ready < 1) return;
+  const t = frontTarget(sys.s);
+  if (t >= 0 && sys.m + EPS >= fuelCost(sys.s, t)) launch(sys, t, 'mine');
 }
 
 // ---------- Ankunft, Nachrichten, Berichte ----------

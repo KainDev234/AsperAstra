@@ -189,10 +189,7 @@ function soloPlayer(start = 0) {
     if (!u.q.length && !u.job && !u.mv && i < plan.length) for (const it of plan[i++]) sim.order(1, it);
     const sol = sim.sysOf(0);
     if (i >= plan.length && !sol.pq && sol.pj === null) sim.orderProbe();
-    if (sol.ready && sim.launchRisk() <= .08) {
-      const t = sim.stars().filter(x => sim.targetFree(x.i)).sort((a, b) => U.dist(a, sim.star(0)) - U.dist(b, sim.star(0)))[0];
-      if (t) sim.launchProbe(t.i, 'mine');
-    }
+    if (sol.ready) { const t = sim.frontTarget(0); if (t >= 0) sim.launchProbe(t, 'mine'); }
   };
 }
 
@@ -295,9 +292,13 @@ test('Sonde: Werft nötig, Bau, Start mit Risiko, Ankunft mit Saatpaket, Nachric
   assert.equal(p.risk, 0, 'erste Sonde ohne Risiko');
   assert.ok(Math.abs(p.at - S.year - d / D.PROBE.v) < 1e-9);
   assert.ok(!sim.targetFree(t.i), 'Ziel vergeben');
-  sol.ready = 1;
-  assert.equal(sim.launchRisk(), D.PROBE.risk, 'die zweite trägt das Risiko der ersten');
-  sol.ready = 0;
+  // Risiko zählt nur Sonden zu Zielen in der Nähe (#11)
+  assert.equal(sim.launchRisk(t.i), D.PROBE.risk, 'gleiches Ziel: Risiko der ersten');
+  const far = sim.stars().find(x => U.dist(x, t) > D.PROBE.riskR);
+  assert.equal(sim.launchRisk(far.i), 0, 'ferne Ziele unbelastet');
+  // Treibstoff je Lj beim Start
+  assert.equal(sol.m, 500 - D.PROBE.cost - sim.fuelCost(0, t.i));
+  assert.equal(sim.fuelCost(0, t.i), Math.round(D.PROBE.fuel * d));
   // Ankunft: System mit Saatpaket und Kopie; die Nachricht kommt d Jahre später
   while (!sim.sysOf(t.i)) sim.step(1 / 12);
   const arr = S.year, ny = sim.sysOf(t.i);
