@@ -15,7 +15,7 @@ export const SCENARIO_SEED = 4242;
  * Die Testspielstände: Name und Bedingung, bis zu der der Bot spielt (höchstens max Jahre).
  *   start    = wie ein neues Spiel
  *   probe    = die erste Sonde ist höchstens noch ein Jahr unterwegs
- *   fronts   = eine ferne Front und Sol haben einen Sender, ihr Bericht ist da: Sprung möglich
+ *   fronts   = Sol hat einen Sender, und der Bericht einer fernen Front meldet ihren: Sprung möglich
  *   overflow = Sol nach 150 Jahren (prüft die Senken)
  */
 export const SCENARIOS = {
@@ -23,7 +23,8 @@ export const SCENARIOS = {
   probe: { n: 'Erste Sonde', max: 150, done: () => S.probes.length > 0 && S.probes[0].at - S.year <= 1 },
   fronts: {
     n: 'Zwei Fronten', max: 300,
-    done: () => sysOf(0).b.some(b => b.k === 'sender') && S.rep.some(r => r.s !== 0 && sysOf(r.s).b.some(b => b.k === 'sender')),
+    // Sprung möglich nach Wissen des Spielers: Sender in Sol und ein Bericht, der dort einen Sender meldet (#13)
+    done: () => sysOf(0).b.some(b => b.k === 'sender') && S.rep.some(r => r.s !== 0 && r.b.sender > 0),
   },
   overflow: { n: 'Überfluss', max: 150, done: () => false },
 };
