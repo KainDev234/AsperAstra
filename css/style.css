@@ -79,6 +79,13 @@ input{font:inherit;color:var(--text);background:#0b0f18;border:1px solid var(--l
 .werft{display:flex;align-items:center;gap:8px;width:100%;font-size:13px}
 .werft button{min-height:30px;padding:2px 8px}.werft button:first-of-type{margin-left:auto}
 .mapsvg .bar{fill:var(--acc)}
+.mapsvg .rich{fill:#9aa6b8}
+/* Forschungsblatt (#24): je Projekt Titel, Wirkung, Kosten und Dauer mit Knopf; gesperrt lesbar */
+.res{padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.res .fx{font-size:12px;margin:2px 0 4px}
+.rrow{display:flex;align-items:center;gap:8px}
+.rrow button{margin-left:auto;min-height:32px;padding:3px 10px}
+.rrow button:disabled{opacity:.8}
 .loglist div{padding:3px 0;border-bottom:1px solid var(--line);font-size:13px}
 
 /* Feste Bedienleiste unten: immer an derselben Stelle */

@@ -10,7 +10,7 @@ import { S, UI } from './state.js';
 import { CLASSES, ORTE, BUILD, CONS } from './data.js';
 import { $, clamp } from './util.js';
 import { star, stars, sysOf } from './sim.js';
-import { isKnown, isLive, reportOf, probesSeen, probePos } from './view.js';
+import { isKnown, isScanned, isLive, reportOf, probesSeen, probePos } from './view.js';
 import { icoAt, markPath } from './icons.js';
 
 /** Zoom der Galaxie in px/Lj: weitester und nächster. */
@@ -63,7 +63,11 @@ export function renderMap() {
   $('#map').innerHTML = `<svg width="${W}" height="${H}" class="mapsvg">${body}</svg>`;
 }
 
-/** Galaxie: Sonden im Flug, Sterne (unbekannte gedämpft), Ringe für eigene Systeme und die Front, Berichtsalter. */
+/**
+ * Galaxie: Sonden im Flug, Sterne (unbekannte gedämpft), Ringe für eigene Systeme und die Front, Berichtsalter.
+ * Fernerkundete fremde Sterne (#24) heller und mit Reichtumsmarke: ein bis drei Punkte unter dem Stern (arm,
+ * mittel, reich).
+ */
 function galaxySvg(W, H) {
   let h = '';
   const on = (x, y, m = 40) => x > -m && y > -m && x < W + m && y < H + m;
@@ -77,8 +81,12 @@ function galaxySvg(W, H) {
   for (const s of stars()) {
     const [x, y] = toScreen(s.x, s.y);
     if (!on(x, y)) continue;
-    const r = 2 + CLASSES[s.cls].e * .35, known = isKnown(s.i);
-    h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${CLASSES[s.cls].c}"${known ? '' : ' opacity=".45"'}/>`;
+    const r = 2 + CLASSES[s.cls].e * .35, known = isKnown(s.i), scanned = !known && isScanned(s.i);
+    h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(1)}" fill="${CLASSES[s.cls].c}"${known ? '' : scanned ? ' opacity=".8"' : ' opacity=".45"'}/>`;
+    if (scanned) {
+      const n = s.rich < 1 ? 1 : s.rich > 1 ? 3 : 2;
+      for (let k = 0; k < n; k++) h += `<circle cx="${(x + (k - (n - 1) / 2) * 4).toFixed(1)}" cy="${(y + r + 5).toFixed(1)}" r="1.2" class="rich"/>`;
+    }
     if (known) h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r + 4).toFixed(1)}" class="ring" stroke="${isLive(s.i) ? ME : OWN}"/>`;
     if (s.i === target) h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r + 4).toFixed(1)}" class="ring dash" stroke="${ME}"/>`;
     if (UI.sel === s.i) h += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${(r + 9).toFixed(1)}" class="ring dash" stroke="${SEL}"/>`;
