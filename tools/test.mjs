@@ -347,7 +347,7 @@ test('Ferne Front: feste Regel – erst Mine, dann Sender, Energie vor Verbrauch
 test('Sprung: braucht Sender an beiden Enden, dauert die Entfernung, wechselt die Front', () => {
   sim.newGame(5); const S = st.S;
   const t = sim.stars()[1];
-  S.sys.push({ s: t.i, m: 0, b: [], pq: 0, pj: null, ready: 0 });
+  S.sys.push({ s: t.i, m: 0, b: [], pq: 0, pj: null, ready: 0, rj: null });
   S.units.push({ id: S.nextId++, k: 'copy', s: t.i, o: 0, lv: 1, q: [], job: null, mv: null });
   assert.equal(sim.jump(t.i), 'sender');
   sim.sysOf(0).b.push({ k: 'sender', o: 0, lv: 1 });
@@ -665,6 +665,144 @@ test('Springen: Sender hier und laut Bericht dort, Nachfrage, unterwegs keine Be
 });
 
 // ---------- Versionsangaben (#15) ----------
+// ---------- Forschung (#22) ----------
+
+/** Neues Spiel mit Sternwarte bzw. Werkstatt in Sol (Gestein, Erde) und reichlich Materie. */
+function labGame(seed, k = 'obs', lv = 1) {
+  sim.newGame(seed);
+  const sol = sim.sysOf(0);
+  sol.b.push({ k, o: D.EARTH, lv });
+  sol.m = 1000;
+  return sol;
+}
+/** Lässt die Zeit laufen, bis cond() gilt (höchstens max Jahre). @returns {number} vergangene Jahre */
+function until(cond, max = 100) {
+  const y0 = st.S.year;
+  for (let i = 0; i < max * 12 && !cond(); i++) sim.step(1 / 12);
+  return st.S.year - y0;
+}
+
+test('Forschung: braucht das passende Labor, kostet beim Start, Laborstufe zählt, Ergebnis an der Front sofort', () => {
+  sim.newGame(41);
+  assert.equal(sim.canResearch('scan'), 'labor');
+  assert.equal(sim.canResearch('xyz'), 'projekt');
+  let sol = labGame(41, 'shop');
+  assert.equal(sim.canResearch('scan'), 'labor', 'Werkstatt hilft der Sternwarte nicht');
+  sol.m = 10;
+  assert.equal(sim.canResearch('seed'), 'materie');
+  sol.m = 100;
+  assert.equal(sim.research('seed'), '');
+  assert.equal(sol.m, 100 - D.PROJECTS.seed.st[0].cost);
+  assert.equal(sim.canResearch('seed'), 'läuft');
+  assert.ok(sv.validate(clone(st.S)));
+  const t1 = until(() => sim.techOf('seed') >= 1);
+  assert.ok(Math.abs(t1 - D.PROJECTS.seed.st[0].work) < 0.2, `Stufe I: ${t1} Jahre`);
+  // Stufe II eines Labors forscht doppelt so schnell
+  sol = labGame(41, 'shop', 2);
+  sim.research('seed');
+  const t2 = until(() => sim.techOf('seed') >= 1);
+  assert.ok(Math.abs(t2 - D.PROJECTS.seed.st[0].work / 2) < 0.2, `Stufe II: ${t2} Jahre`);
+  // Abbruch: nichts erstattet, Labor wieder frei
+  sim.research('seed');
+  assert.equal(sim.stopResearch(), true);
+  assert.equal(sol.rj, null);
+  assert.equal(sim.canResearch('seed'), '');
+});
+
+test('Fernerkundung: Fernmessung dauert mit dem Abstand, danach erkennt jede Sternwarte den Umkreis', () => {
+  labGame(42);
+  const S = st.S, t = sim.remoteTarget(0, D.PROJECTS.scan.st[0].range);
+  assert.ok(t !== null, 'Ziel in Reichweite');
+  const st0 = D.PROJECTS.scan.st[0], work = st0.work + st0.perLj * U.dist(sim.star(0), sim.star(t));
+  assert.ok(Math.abs(sim.stageWork(st0, 0) - work) < 1e-9);
+  assert.equal(sim.research('scan'), '');
+  const y = until(() => sim.techOf('scan') >= 1);
+  assert.ok(Math.abs(y - work) < 0.2, `${y} statt ${work} Jahre`);
+  until(() => S.scan.length > 0, 2);
+  const near = sim.stars().filter(x => U.dist(x, sim.star(0)) <= D.SCAN_R).map(x => x.i);
+  assert.deepEqual([...S.scan].sort((a, b) => a - b), near.sort((a, b) => a - b), 'genau der Umkreis');
+  assert.ok(sv.validate(clone(S)));
+  // Stufe 2 braucht ein zweites System mit Sternwarte, weit genug weg
+  assert.equal(sim.canResearch('scan'), 'partner');
+  const far = sim.stars().find(x => U.dist(x, sim.star(0)) >= 15 && U.dist(x, sim.star(0)) < 25);
+  S.sys.push({ s: far.i, m: 0, b: [{ k: 'obs', o: 0, lv: 1 }], pq: 0, pj: null, ready: 0, rj: null });
+  S.units.push({ id: S.nextId++, k: 'copy', s: far.i, o: 0, lv: 1, q: [], job: null, mv: null });
+  sim.sysOf(far.i).b.push({ k: 'power', o: 0, lv: 1 });
+  assert.equal(sim.research('scan'), '');
+  // Ergebnis kommt erst nach der Arbeit plus dem Weg der Partnerdaten
+  const y2 = until(() => sim.techOf('scan') >= 2);
+  const d = U.dist(far, sim.star(0));
+  assert.ok(y2 >= D.PROJECTS.scan.st[1].work + d - 0.1 && y2 < D.PROJECTS.scan.st[1].work + d + 0.3, `${y2} Jahre`);
+  assert.equal(S.scan.length, sim.stars().length, 'ganze Galaxie');
+  assert.equal(sim.canResearch('scan'), 'fertig');
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Forschung: läuft in einem verlassenen System weiter, Ergebnis kommt mit c', () => {
+  labGame(43);
+  const S = st.S;
+  sim.research('seed');   // ohne Werkstatt: geht nicht
+  assert.equal(sim.sysOf(0).rj, null);
+  sim.sysOf(0).b.push({ k: 'shop', o: 1, lv: 1 });
+  assert.equal(sim.research('seed'), '');
+  // Spieler springt weg (Sender hier und dort)
+  const t = sim.stars()[1];
+  S.sys.push({ s: t.i, m: 0, b: [{ k: 'sender', o: 0, lv: 1 }], pq: 0, pj: null, ready: 0, rj: null });
+  S.units.push({ id: S.nextId++, k: 'copy', s: t.i, o: 0, lv: 1, q: [], job: null, mv: null });
+  sim.sysOf(0).b.push({ k: 'sender', o: 0, lv: 1 });
+  const y0 = S.year;
+  assert.equal(sim.jump(t.i), '');
+  const y = until(() => sim.techOf('seed') >= 1);
+  const d = U.dist(t, sim.star(0));
+  assert.ok(S.year - y0 >= D.PROJECTS.seed.st[0].work + d - 0.1, `${y} Jahre, Abstand ${d}`);
+  assert.ok(sv.validate(clone(S)));
+});
+
+test('Saatsonde: Konstruktor im Saatpaket kostet extra und kommt an, leichte Sonde halbiert die Kosten', () => {
+  labGame(44, 'shop');
+  const S = st.S, sol = sim.sysOf(0);
+  sol.b.push({ k: 'werft', o: 4, lv: 1 });
+  sol.ready = 2;
+  const t = sim.frontTarget(0);
+  assert.equal(sim.launchProbe(t, 'mine', true), 'saat', 'erst nach Stufe 1');
+  S.tech.seed = 1;
+  const m0 = sol.m;
+  assert.equal(sim.launchProbe(t, 'mine', true), '');
+  assert.equal(m0 - sol.m, sim.fuelCost(0, t) + D.CONS.cost);
+  assert.equal(S.probes[0].c, true);
+  assert.ok(sv.validate(clone(S)));
+  S.probes[0].risk = 0;
+  until(() => sim.sysOf(t), 200);
+  assert.equal(S.units.filter(u => u.s === t && u.k === 'cons').length, 1, 'Konstruktor angekommen');
+  assert.equal(sim.probeCost(), D.PROBE.cost);
+  S.tech.seed = 2;
+  assert.equal(sim.probeCost(), D.PROBE.cost * D.LIGHT_PROBE);
+  sol.m = 100; sim.orderProbe(); sim.step(1 / 12);
+  assert.ok(Math.abs(sol.m - (100 - D.PROBE.cost * D.LIGHT_PROBE)) < 1, 'Werft zahlt den halben Preis');
+});
+
+test('Spielstand 3: Migration von 2, Prüfung der Forschungsfelder', () => {
+  labGame(45, 'shop');
+  sim.research('seed');
+  const ok = clone(st.S);
+  assert.ok(sv.validate(ok));
+  // Stand der Version 2: ohne tech, scan, rj und c
+  const old = clone(ok); old.v = 2; delete old.tech; delete old.scan;
+  old.sys.forEach(y => delete y.rj);
+  const m = sv.migrate(old);
+  assert.equal(m.v, D.SAVE_VERSION);
+  assert.ok(sv.validate(m));
+  assert.equal(m.sys[0].rj, null);
+  const bad = [
+    d => { d.tech = { xyz: 1 }; }, d => { d.tech = { scan: 3 }; }, d => { d.tech = { scan: 0 }; }, d => { d.scan = [0, 0]; },
+    d => { d.scan = [999]; }, d => { d.sys[0].rj = { p: 'scan', n: 9, left: 1 }; }, d => { d.sys[0].rj.x = 1; },
+    d => { d.mail.push({ at: d.year + 1, k: 'tech', s: 0, d: { p: 'nix', n: 1 } }); },
+    d => { d.mail.push({ at: d.year + 1, k: 'scan', s: 0, d: [] }); },
+    d => { d.sys.push({ s: 1, m: 0, b: [], pq: 0, pj: null, ready: 0, rj: { p: 'seed', n: 1, left: 1 } }); d.units.push({ id: d.nextId++, k: 'copy', s: 1, o: 0, lv: 1, q: [], job: null, mv: null }); },
+  ];
+  for (const f of bad) { const d = clone(ok); f(d); assert.equal(sv.validate(d), false, f.toString()); }
+});
+
 test('Versionen: index.html nennt für Stylesheet und jedes Modul die aktuelle Prüfsumme (sonst: node tools/version.mjs)', async () => {
   const VS = await import(new URL('../tools/version.mjs', js));
   const html = readFileSync(new URL('../index.html', js), 'utf8');

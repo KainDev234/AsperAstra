@@ -2,7 +2,7 @@
  * icons.js – eigene Piktogramme und Ziffern als Linienzüge (#13), ohne DOM-Zugriff. Keine externen Dateien.
  *
  * Piktogramme: dünne Linien im 24er-Raster in `currentColor` (Farbe vom Umfeld). Konstruktor, Mine und Sonde
- * übernommen aus Replikator (js/icons.js), Kraftwerk, Werft und Sender neu.
+ * übernommen aus Replikator (js/icons.js), Kraftwerk, Werft, Sender und Labore neu.
  * Ziffern: In der zoombaren Karte steht keine Schrift, sondern Pfade (Lehre aus Replikator #209: mobile Browser
  * vergrößern Schrift dort eigenmächtig). Glyphen übernommen aus Replikator (ui.markPath).
  */
@@ -15,6 +15,9 @@ export const ICONS = {
   werft: 'M3 21h18M5 21V11l7-5 7 5v10M9 21v-6h6v6M12 6V2',
   sender: 'M5 21h14M12 21v-8M6 8a6 6 0 0 0 12 0zM12 8V3M9 5l3-3 3 3',
   probe: 'M12 2.5l7 18-7-4-7 4z',
+  // Labore (#22): Sternwarte als Fernrohr auf Dreibein, Werkstatt als Schraubenschlüssel
+  obs: 'M4 14l11-6 2 4-11 6zM15 8l3-1.5 2 4-3 1.5M10 16l-3 6M10 16l3 6',
+  shop: 'M14.5 3.5a4 4 0 0 0-5 5L3 15l3 3 6.5-6.5a4 4 0 0 0 5-5l-2.5 2.5-2.5-.5-.5-2.5z',
 };
 
 /**

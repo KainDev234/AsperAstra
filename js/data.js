@@ -4,7 +4,7 @@
 
 /** Schlüssel im localStorage. Bei Formatänderungen SAVE_VERSION erhöhen und in save.js (MIGRATIONS) umwandeln. */
 export const SAVE_KEY = 'asperastra-save';
-export const SAVE_VERSION = 2;   // 2: Kern-Prototyp (#7); Stände von 1 sind leer und werden nicht umgewandelt
+export const SAVE_VERSION = 3;   // 2: Kern-Prototyp (#7); 3: Forschung (#22), Migration in save.js
 /** Spieljahr beim Start. */
 export const START_YEAR = 2133;
 
@@ -54,6 +54,9 @@ export const BUILD = {
   power: { n: 'Kraftwerk', cost: 15, time: 0.5, up: 30, need: 0, at: ['star', 'rock', 'gas'] },
   werft: { n: 'Werft', cost: 25, time: 1, up: 40, need: 2, at: ['star', 'rock', 'gas'] },
   sender: { n: 'Sender', cost: 30, time: 1, up: null, need: 2, at: ['star'] },
+  // Labore (#22): das Profil ist die Gebäudeart; Umbau = Abriss und Neubau. Stufe II forscht doppelt so schnell.
+  obs: { n: 'Sternwarte', cost: 30, time: 1, up: 50, need: 2, at: ['star', 'rock', 'gas'] },
+  shop: { n: 'Werkstatt', cost: 30, time: 1, up: 50, need: 2, at: ['star', 'rock', 'gas'] },
 };
 /** Förderung einer Mine je Stufe (M/Jahr), vor Ort- und Systemfaktor. */
 export const MINE_RATE = [0, 2, 5];
@@ -77,6 +80,35 @@ export const MOVE_T = [1 / 12, 3 / 12];
  * zu einem Ziel im Umkreis von riskR Lj um das eigene Ziel fliegt (Dichte zählt örtlich, nicht im Ganzen).
  */
 export const PROBE = { cost: 40, time: 1, v: 0.2, seedM: 15, risk: 0.04, riskR: 10, fuel: 3, queue: 3 };
+/**
+ * Forschung (#22, Katalog in #21): Projekte mit Stufen. Je Stufe: Name (n), Laborprofil (lab: Gebäudeart),
+ * Weg ('lab' = Labor, 'remote' = Fernmessung, 'pair' = Messung mit einem zweiten eigenen System), Kosten in M beim
+ * Start (cost), Arbeit in Labor-Jahren (work). Fernmessung: Ziel ist der nächste fremde Stern bis range Lj, die
+ * Arbeit wächst um perLj je Lj Abstand. Paar: ein anderes eigenes System mit demselben Labor, mindestens minD Lj
+ * entfernt; das Ergebnis kommt zusätzlich um dessen Abstand verzögert (seine Daten reisen mit c).
+ * Die Wirkungen stehen in sim.js (techOf); die Zahlen sind Startwerte für den Bot.
+ */
+export const PROJECTS = {
+  scan: {
+    n: 'Fernerkundung',
+    st: [
+      { n: 'Fernmessung', lab: 'obs', way: 'remote', cost: 0, work: 2, range: 10, perLj: 0.5 },
+      { n: 'Interferometrie', lab: 'obs', way: 'pair', cost: 120, work: 4, minD: 15 },
+    ],
+  },
+  seed: {
+    n: 'Saatsonde',
+    st: [
+      { n: 'Konstruktor im Saatpaket', lab: 'shop', way: 'lab', cost: 20, work: 4 },
+      { n: 'Leichte Saatsonde', lab: 'shop', way: 'lab', cost: 150, work: 8 },
+    ],
+  },
+};
+/** Fernerkundung Stufe 1: Umkreis (Lj), in dem jede Sternwarte Reichtum und Orte erkennt. */
+export const SCAN_R = 8;
+/** Saatsonde Stufe 2: Faktor auf die Sondenkosten. */
+export const LIGHT_PROBE = 0.5;
+
 /** Ferne Fronten starten Sonden nur bis zu diesem Verlustrisiko (feste Regel, #6). */
 export const FRONT_RISK_MAX = 0.08;
 /** Startpaket in Sol: Materie im Lager (ein Kraftwerk am Stern steht schon). */

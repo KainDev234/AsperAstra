@@ -15,7 +15,7 @@
  * und nur bei Erfolg übernommen. Sonst bleibt das laufende Spiel unverändert.
  */
 import { S, setState } from './state.js';
-import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES, BUILD, ORTE, PROBE, QUEUE_MAX } from './data.js';
+import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES, BUILD, ORTE, PROBE, QUEUE_MAX, PROJECTS } from './data.js';
 import { hooks, itemValid, WAITS } from './sim.js';
 import { galaxy } from './galaxy.js';
 import { SEED_RANGE } from './util.js';
@@ -30,7 +30,14 @@ const APP = 'asperastra';
  * setzt d.v = v+1. Gibt es für eine Version keinen Eintrag, ist der Stand zu alt und wird verworfen.
  * Bei jeder Erhöhung von SAVE_VERSION (data.js) hier nach Möglichkeit eine Migration ergänzen.
  */
-const MIGRATIONS = {};
+const MIGRATIONS = {
+  // 2 → 3 (#22): Forschung – noch nichts erforscht, kein Projekt läuft, keine Sonde trägt einen Konstruktor
+  2: d => ({
+    ...d, v: 3, tech: {}, scan: [],
+    sys: d.sys.map(y => ({ ...y, rj: null })),
+    probes: d.probes.map(p => ({ ...p, c: false })),
+  }),
+};
 
 /**
  * Bringt einen Spielstand auf die aktuelle Version.
@@ -78,12 +85,19 @@ const buildKey = k => str(k) && Object.prototype.hasOwnProperty.call(BUILD, k);
 const validBuilding = (b, st) => obj(b) && only(b, ['k', 'o', 'lv']) && buildKey(b.k) && int(b.o, 0, st.orte.length - 1)
   && BUILD[b.k].at.includes(st.orte[b.o].k) && int(b.lv, 1, BUILD[b.k].up === null ? 1 : 2);
 
-/** System { s, m, b, pq, pj, ready }; Plätze je Ort werden im Ganzen geprüft (validate). */
+/** Schlüssel in PROJECTS. */
+const projKey = p => str(p) && Object.prototype.hasOwnProperty.call(PROJECTS, p);
+/** Stufe n von Projekt p existiert. */
+const stageOk = (p, n) => projKey(p) && int(n, 1, PROJECTS[p].st.length);
+/** Laufende Forschung { p, n, left } (left großzügig: Fernmessung wächst mit dem Abstand). */
+const validRj = r => r === null || (obj(r) && only(r, ['p', 'n', 'left']) && stageOk(r.p, r.n) && within(r.left, -1, 1000));
+
+/** System { s, m, b, pq, pj, ready, rj }; Plätze je Ort werden im Ganzen geprüft (validate). */
 function validSys(y, stars) {
-  if (!obj(y) || !only(y, ['s', 'm', 'b', 'pq', 'pj', 'ready']) || !int(y.s, 0, stars.length - 1)) return false;
+  if (!obj(y) || !only(y, ['s', 'm', 'b', 'pq', 'pj', 'ready', 'rj']) || !int(y.s, 0, stars.length - 1)) return false;
   const st = stars[y.s];
   return within(y.m, 0, BIG) && Array.isArray(y.b) && y.b.every(b => validBuilding(b, st))
-    && int(y.pq, 0, PROBE.queue) && (y.pj === null || within(y.pj, -1, PROBE.time)) && int(y.ready, 0, 1000);
+    && int(y.pq, 0, PROBE.queue) && (y.pj === null || within(y.pj, -1, PROBE.time)) && int(y.ready, 0, 1000) && validRj(y.rj);
 }
 
 /** Laufender Auftrag eines Bauers an Stern st. */
@@ -107,10 +121,14 @@ function validUnit(u, stars) {
   return u.wait === undefined || WAITS.includes(u.wait);
 }
 
-/** Sonde im Flug { id, from, to, at, seed, two, risk }. */
-const validProbe = (p, stars, yr) => obj(p) && only(p, ['id', 'from', 'to', 'at', 'seed', 'two', 'risk'])
+/** Sonde im Flug { id, from, to, at, seed, two, c, risk }. */
+const validProbe = (p, stars, yr) => obj(p) && only(p, ['id', 'from', 'to', 'at', 'seed', 'two', 'c', 'risk'])
   && int(p.id, 1, 1e9) && int(p.from, 0, stars.length - 1) && int(p.to, 0, stars.length - 1) && p.from !== p.to
-  && within(p.at, yr - 1, YEAR_MAX) && ['mine', 'power'].includes(p.seed) && typeof p.two === 'boolean' && within(p.risk, 0, 1);
+  && within(p.at, yr - 1, YEAR_MAX) && ['mine', 'power'].includes(p.seed) && typeof p.two === 'boolean'
+  && typeof p.c === 'boolean' && within(p.risk, 0, 1);
+
+/** Liste verschiedener Sterne (Fernerkundung). */
+const starList = (a, stars) => Array.isArray(a) && a.length <= stars.length && a.every(s => int(s, 0, stars.length - 1)) && new Set(a).size === a.length;
 
 /** Bericht eines Systems { y, m, b: { Art: Anzahl }, cons, ready } (ohne s). */
 const validReport = (r, yr) => obj(r) && year(r.y) && r.y <= yr + 1 && int(r.m, 0, BIG) && obj(r.b)
@@ -120,6 +138,8 @@ const validReport = (r, yr) => obj(r) && year(r.y) && r.y <= yr + 1 && int(r.m, 
 function validMail(x, stars, yr) {
   if (!obj(x) || !within(x.at, yr - 1, YEAR_MAX) || !int(x.s, 0, stars.length - 1)) return false;
   if (x.k === 'rep') return only(x, ['at', 'k', 's', 'd']) && validReport(x.d, yr);
+  if (x.k === 'tech') return only(x, ['at', 'k', 's', 'd']) && obj(x.d) && only(x.d, ['p', 'n']) && stageOk(x.d.p, x.d.n);
+  if (x.k === 'scan') return only(x, ['at', 'k', 's', 'd']) && x.d.length > 0 && starList(x.d, stars);
   return ['arrive', 'lost'].includes(x.k) && only(x, ['at', 'k', 's']);
 }
 
@@ -129,7 +149,7 @@ function validMail(x, stars, yr) {
  * @returns {boolean} true, wenn er gefahrlos als laufendes Spiel übernommen werden kann
  */
 export function validate(d) {
-  const KEYS = ['v', 'seed', 'rng', 'year', 'speed', 'tempo', 'log', 'me', 'jump', 'sys', 'units', 'nextId', 'probes', 'known', 'mail', 'rep', 'nextRep'];
+  const KEYS = ['v', 'seed', 'rng', 'year', 'speed', 'tempo', 'log', 'me', 'jump', 'sys', 'units', 'nextId', 'probes', 'known', 'mail', 'rep', 'nextRep', 'tech', 'scan'];
   if (!obj(d) || d.v !== SAVE_VERSION || !only(d, KEYS) || KEYS.some(k => d[k] === undefined)) return false;
   // seed: 0 … 2^32−1; rng: 32-Bit-Zustand des Simulations-Zufalls
   if (!int(d.seed, 0, SEED_RANGE - 1) || !int(d.rng, -(2 ** 31), 2 ** 31 - 1)) return false;
@@ -168,6 +188,10 @@ export function validate(d) {
   if (!Array.isArray(d.mail) || d.mail.length > MAX_MAIL || !d.mail.every(x => validMail(x, stars, yr))) return false;
   if (!Array.isArray(d.rep) || !d.rep.every(r => obj(r) && only(r, ['s', 'y', 'm', 'b', 'cons', 'ready']) && int(r.s, 0, stars.length - 1) && validReport(r, yr))) return false;
   if (new Set(d.rep.map(r => r.s)).size !== d.rep.length) return false;
+  // Forschung: erreichte Stufen je Projekt, Fernerkundung; je Projekt läuft höchstens ein System
+  if (!obj(d.tech) || !Object.entries(d.tech).every(([p, n]) => stageOk(p, n)) || !starList(d.scan, stars)) return false;
+  const running = d.sys.filter(y => y.rj).map(y => y.rj.p);
+  if (new Set(running).size !== running.length) return false;
   return int(d.nextRep, START_YEAR + 1, YEAR_MAX) && d.nextRep > yr - 1 && d.nextRep <= yr + 1;
 }
 

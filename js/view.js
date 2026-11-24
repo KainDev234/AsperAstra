@@ -14,6 +14,8 @@ export const viewer = () => star(S.me !== null ? S.me : S.jump.to);
 export const isLive = s => s === S.me;
 /** Kennt der Spieler den Fund von Stern s (Orte, Reichtum, Besonderheit)? In Phase 3 heißt das: eigenes System. */
 export const isKnown = s => S.known.includes(s);
+/** Kennt der Spieler Reichtum und Orte von Stern s (eigenes System oder Fernerkundung, #22)? Die Besonderheit nicht. */
+export const isScanned = s => isKnown(s) || S.scan.includes(s);
 /** Letzter angekommener Bericht von System s oder null. */
 export const reportOf = s => S.rep.find(r => r.s === s) || null;
 
