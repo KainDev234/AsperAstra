@@ -30,6 +30,10 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
   Befehle (`order`, `orderProbe`, `launchProbe`, `jump`) gelten nur an der aktiven Front `S.me`. Ferne Fronten
   bauen nach der festen Regel `planFront` (keine Anweisungen in Phase 3). Nachrichten und Berichte reisen mit c
   (`S.mail`); was der Spieler über ferne Systeme weiß, steht in `S.known` und `S.rep`, nicht in `S.sys`.
+- **Forschung** (Rahmen und Katalog in #21, Regeln #22): Projekte mit Stufen in `data.PROJECTS`. Ein System forscht
+  an einem Projekt zur Zeit (`sys.rj`), getragen von seinen Laboren (Sternwarte `obs`, Werkstatt `shop`; das Profil
+  ist die Gebäudeart). Das Ergebnis reist mit c zum Spieler und gilt ab Ankunft überall (`S.tech`); die
+  Fernerkundung füllt `S.scan` (Reichtum und Orte, nie die Besonderheit).
 
 - **Oberfläche** (#13): eine zoombare Karte mit Stufen (Galaxie, System; Ort folgt) statt Reitern, gezeichnet als
   SVG in Bildschirmkoordinaten (`map.js`), Gesten in `input.js`. In der Karte **keine `<text>`-Elemente**: Zahlen

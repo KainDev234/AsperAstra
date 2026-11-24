@@ -12,14 +12,17 @@
  *   Auslastung   belegte Plätze ÷ alle Plätze der Systeme; am Ende des Abschnitts
  *   Systeme      Anzahl Systeme am Ende des Abschnitts
  * Einmalig je Lauf: Zeit bis zur ersten Entscheidung, Ertragslatenz der ersten Sonde (Baubeginn in der Werft bis
- * die Ankunftsnachricht da ist), verlorene Sonden.
+ * die Ankunftsnachricht da ist), verlorene Sonden, Jahr jeder erreichten Forschungsstufe (#22).
+ * Eine laufende Forschung an der aktiven Front zählt nicht als Leerlauf (wie eine Sonde im Bau).
  */
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 const js = new URL('../js/', import.meta.url);
 const st = await import(new URL('state.js', js));
 const sim = await import(new URL('sim.js', js));
 const { createBot } = await import(new URL('bot.js', js));
-const { ORTE } = await import(new URL('data.js', js));
+const { ORTE, PROJECTS } = await import(new URL('data.js', js));
+/** Alle Forschungsstufen als „Projekt:Stufe“. */
+const STAGES = Object.entries(PROJECTS).flatMap(([p, P]) => P.st.map((s, i) => [`${p}:${i + 1}`, s.n]));
 
 const SEEDS = +(process.argv[2] || 20), YEARS = +(process.argv[3] || 300);
 /** Grenzen der Zeitabschnitte in Spieljahren ab Start. */
@@ -34,6 +37,7 @@ function run(seed) {
   sim.newGame(seed);
   const S = st.S, y0 = S.year;
   let decisions = 0, firstDecision = null, probeStart = null, latency = null;
+  const techAt = {};
   const bot = createBot(() => { decisions++; if (firstDecision === null) firstDecision = S.year - y0; });
   const periods = [];
   let idle = 0, monthsIn = 0, decAt = 0;
@@ -44,12 +48,13 @@ function run(seed) {
       if (probeStart === null && sol.pj !== null) probeStart = S.year;
       if (S.me !== null) {
         const sys = sim.sysOf(S.me);
-        const busy = S.units.some(u => u.s === S.me && (u.job || u.mv || (u.q.length && u.wait !== 'matter'))) || sys.pj !== null;
+        const busy = S.units.some(u => u.s === S.me && (u.job || u.mv || (u.q.length && u.wait !== 'matter'))) || sys.pj !== null || sys.rj !== null;
         if (!busy) idle++;
       }
       monthsIn++;
       sim.step(1 / 12);
       if (latency === null && probeStart !== null && S.log.some(e => e.t.startsWith('Sonde angekommen'))) latency = S.year - probeStart;
+      for (const [p, n] of Object.entries(S.tech)) for (let i = 1; i <= n; i++) if (!(`${p}:${i}` in techAt)) techAt[`${p}:${i}`] = S.year - y0;
     }
     const ratio = S.sys.map(y => y.m / Math.max(sim.income(y), 1e-6));
     let used = 0, slots = 0;
@@ -58,7 +63,7 @@ function run(seed) {
     decAt = decisions; idle = 0; monthsIn = 0;
   }
   const lost = S.log.filter(e => e.t.includes('verloren')).length;
-  return { periods, firstDecision, latency, lost };
+  return { periods, firstDecision, latency, lost, techAt };
 }
 
 const t0 = Date.now();
@@ -76,3 +81,8 @@ const lat = runs.map(r => r.latency).filter(x => x !== null);
 console.log(`\nErste Entscheidung nach ${fmt(mean(runs.map(r => r.firstDecision)), 2)} Jahren`);
 console.log(`Ertragslatenz erste Sonde: Mittel ${fmt(mean(lat))} J, ${fmt(Math.min(...lat))}–${fmt(Math.max(...lat))} J (${lat.length}/${SEEDS} Läufe mit Ankunft)`);
 console.log(`Verlorene Sonden je Lauf: ${fmt(mean(runs.map(r => r.lost)))}`);
+console.log('\nForschung (Jahr ab Start; Median der Läufe, die die Stufe erreichen):');
+for (const [k, n] of STAGES) {
+  const ys = runs.map(r => r.techAt[k]).filter(x => x !== undefined);
+  console.log(`  ${(k + ' ' + n).padEnd(36)} ${ys.length ? fmt(median(ys), 0).padStart(4) + ' J' : '   –  '}  (${ys.length}/${SEEDS})`);
+}

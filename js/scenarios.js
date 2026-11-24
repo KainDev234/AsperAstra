@@ -5,7 +5,7 @@
  * Stand. Ohne DOM.
  */
 import { S } from './state.js';
-import { newGame, step, log, sysOf } from './sim.js';
+import { newGame, step, log, sysOf, techOf } from './sim.js';
 import { createBot } from './bot.js';
 
 /** Seed aller Testspielstände. */
@@ -16,6 +16,7 @@ export const SCENARIO_SEED = 4242;
  *   start    = wie ein neues Spiel
  *   probe    = die erste Sonde ist höchstens noch ein Jahr unterwegs
  *   fronts   = Sol hat einen Sender, und der Bericht einer fernen Front meldet ihren: Sprung möglich
+ *   research = Fernerkundung und Konstruktor im Saatpaket erforscht (#22)
  *   overflow = Sol nach 150 Jahren (prüft die Senken)
  */
 export const SCENARIOS = {
@@ -26,6 +27,7 @@ export const SCENARIOS = {
     // Sprung möglich nach Wissen des Spielers: Sender in Sol und ein Bericht, der dort einen Sender meldet (#13)
     done: () => sysOf(0).b.some(b => b.k === 'sender') && S.rep.some(r => r.s !== 0 && r.b.sender > 0),
   },
+  research: { n: 'Forschung', max: 100, done: () => techOf('scan') >= 1 && techOf('seed') >= 1 },
   overflow: { n: 'Überfluss', max: 150, done: () => false },
 };
 

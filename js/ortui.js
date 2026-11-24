@@ -10,7 +10,7 @@
 import { S, UI } from './state.js';
 import { BUILD, CONS, ORTE, PROBE, RAZE_BACK, QUEUE_MAX } from './data.js';
 import { esc } from './util.js';
-import { star, sysOf, ortName, order, unorder, orderProbe, canBuildAt, used } from './sim.js';
+import { star, sysOf, ortName, order, unorder, orderProbe, canBuildAt, used, probeCost } from './sim.js';
 import { ico } from './icons.js';
 
 /** Grund-Zeichen, warum ein Auftrag wartet bzw. etwas gesperrt ist (kurz, ohne Sätze). */
@@ -118,8 +118,8 @@ export function werftHtml() {
   const sys = sysOf(S.me);
   if (!sys || !sys.b.some(b => b.k === 'werft')) return '';
   const pct = sys.pj === null ? 0 : Math.round(100 * (1 - sys.pj / PROBE.time));
-  return `<div class="werft">${ico('werft')} <span>${sys.pq ? `${sys.pq} im Bau${sys.pj !== null ? ` · ${pct} %` : ` · ${PROBE.cost} M fehlt`}` : '<span class="dim">leer</span>'}</span>`
+  return `<div class="werft">${ico('werft')} <span>${sys.pq ? `${sys.pq} im Bau${sys.pj !== null ? ` · ${pct} %` : ` · ${probeCost()} M fehlt`}` : '<span class="dim">leer</span>'}</span>`
     + `${sys.ready ? ` <span class="good">${ico('probe')} ${sys.ready} bereit</span>` : ''}`
     + (sys.ready ? '<button data-a="start">Starten ›</button>' : '')
-    + `<button data-a="probe"${sys.pq >= PROBE.queue ? ' disabled' : ''}>+ ${ico('probe')} ${PROBE.cost} M</button></div>`;
+    + `<button data-a="probe"${sys.pq >= PROBE.queue ? ' disabled' : ''}>+ ${ico('probe')} ${probeCost()} M</button></div>`;
 }

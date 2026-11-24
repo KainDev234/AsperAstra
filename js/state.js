@@ -12,12 +12,16 @@
  *   log = Logbuch [{ y: Jahr, t: Text, c?: Klasse }],
  *   me = Stern der aktiven Front (null während eines Sprungs), jump = { to, at } oder null,
  *   sys = Systeme mit Kopie [{ s: Stern, m: Materie, b: Gebäude [{ k, o: Ort, lv }], pq: Sonden in Auftrag,
- *     pj: Restbauzeit der laufenden Sonde oder null, ready: fertige Sonden }],
+ *     pj: Restbauzeit der laufenden Sonde oder null, ready: fertige Sonden,
+ *     rj: laufende Forschung { p: Projekt, n: Stufe, left: Rest in Labor-Jahren } oder null }],
  *   units = Bauer [{ id, k: 'copy' | 'cons', s, o, lv, q: Warteschlange, job: laufender Auftrag oder null,
  *     mv: Reise im System { o, t } oder null, wait?: Grund, warum der erste Auftrag wartet }],
- *   nextId = nächste freie id (Bauer und Sonden), probes = Sonden im Flug [{ id, from, to, at, seed, two, risk }],
+ *   nextId = nächste freie id (Bauer und Sonden),
+ *   probes = Sonden im Flug [{ id, from, to, at, seed, two, c: Konstruktor an Bord, risk }],
  *   known = Sterne mit bekanntem Fund, mail = Nachrichten unterwegs zum Spieler [{ at, k, s, d? }],
- *   rep = zuletzt angekommener Bericht je System, nextRep = Jahr des nächsten Berichts.
+ *   rep = zuletzt angekommener Bericht je System, nextRep = Jahr des nächsten Berichts,
+ *   tech = erreichte Stufe je Forschungsprojekt { scan: 1, … }, scan = Sterne mit bekanntem Reichtum und Orten
+ *   (Fernerkundung, ohne Besonderheit).
  * Die Galaxie selbst steht nicht im Spielstand (galaxy.js, aus dem Seed). Aufbau siehe sim.newGame().
  */
 export let S = null;
