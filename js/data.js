@@ -4,7 +4,7 @@
 
 /** Schlüssel im localStorage. Bei Formatänderungen SAVE_VERSION erhöhen und in save.js (MIGRATIONS) umwandeln. */
 export const SAVE_KEY = 'asperastra-save';
-export const SAVE_VERSION = 3;   // 2: Kern-Prototyp (#7); 3: Forschung (#22), Migration in save.js
+export const SAVE_VERSION = 4;   // 2: Kern-Prototyp (#7); 3: Forschung (#22); 4: Antrieb (#26); Migration in save.js
 /** Spieljahr beim Start. */
 export const START_YEAR = 2133;
 
@@ -88,6 +88,14 @@ export const PROBE = { cost: 40, time: 1, v: 0.2, seedM: 15, risk: 0.04, riskR: 
  * entfernt; das Ergebnis kommt zusätzlich um dessen Abstand verzögert (seine Daten reisen mit c).
  * fx: Wirkung in einer Zeile fürs Forschungsblatt. Die Wirkungen selbst stehen in sim.js (techOf); die Zahlen sind
  * Startwerte für den Bot.
+ * Antrieb (#26): need = zusätzlich nötiges Gebäude; Fernmessung nur zu Sternen der Klassen cls. Weg 'site' = Messung
+ * vor Ort an einem Stern, der site erfüllt ('M' Roter Zwerg, 'gasPower' Gasriese mit Besonderheit, 'FA' F- oder
+ * A-Stern): Steht das forschende System selbst an so einem Stern, forscht es wie ein Labor; steht ein anderes
+ * eigenes System dort, liefert es die Messdaten (das Ergebnis kommt um dessen Abstand später); sonst fliegt nach der
+ * Laborarbeit eine Instrumentensonde hin (Sondenpreis aus der Werft plus Treibstoff, normales Verlustrisiko), deren
+ * Messung mit c zum Spieler reist.
+ * Feinschliff (rep): wiederholbare Schritte, Kosten cost · grow^Schritt, gedeckelt durch die Antriebsstufe (sim.js
+ * stageCap); Stufen entstehen mit stageOf.
  */
 export const PROJECTS = {
   scan: {
@@ -108,11 +116,42 @@ export const PROJECTS = {
         fx: 'Sonden kosten die Hälfte' },
     ],
   },
+  drive: {
+    n: 'Antrieb',
+    st: [
+      { n: 'Magnetbremse', lab: 'shop', need: 'obs', way: 'remote', cls: ['G', 'F', 'A'], cost: 60, work: 3, range: 16, perLj: 0.5,
+        fx: 'Halber Treibstoff zu G-, F- und A-Sternen' },
+      { n: 'Bremse an Zwergen', lab: 'shop', way: 'site', site: 'M', cost: 80, work: 4,
+        fx: 'Halber Treibstoff zu allen Zielen' },
+      { n: 'Gasriesen-Tanken', lab: 'shop', way: 'site', site: 'gasPower', cost: 150, work: 6,
+        fx: 'Sonden fliegen 0,25 c' },
+      { n: 'Lichtsegel', lab: 'shop', way: 'site', site: 'FA', cost: 300, work: 10,
+        fx: 'Kein Treibstoff, Sonden fliegen 0,3 c' },
+    ],
+  },
+  nozzle: { n: 'Düsen', rep: { lab: 'shop', cost: 60, grow: 1.5, work: 2, per: 3, max: 12, fx: '−10 % Treibstoff' } },
+  engine: { n: 'Triebwerk', rep: { lab: 'shop', cost: 60, grow: 1.5, work: 2, per: 4, max: 4, fx: '+0,01 c' } },
 };
+
+/**
+ * Stufe i (1 = erste) von Projekt p; bei Feinschliff erzeugt aus rep (Name mit Nummer, steigende Kosten).
+ * @returns {object|undefined} undefined, wenn es die Stufe nicht gibt
+ */
+export function stageOf(p, i) {
+  const P = PROJECTS[p];
+  if (!P.rep) return P.st[i - 1];
+  if (i < 1 || i > P.rep.max) return undefined;
+  const r = P.rep;
+  return { n: `${P.n} ${i}`, lab: r.lab, way: 'lab', cost: Math.round(r.cost * r.grow ** (i - 1)), work: r.work, fx: r.fx };
+}
+/** Höchste Stufe, die es von Projekt p überhaupt geben kann (Prüfung von Spielständen). */
+export const stageMax = p => PROJECTS[p].rep ? PROJECTS[p].rep.max : PROJECTS[p].st.length;
 /** Fernerkundung Stufe 1: Umkreis (Lj), in dem jede Sternwarte Reichtum und Orte erkennt. */
 export const SCAN_R = 8;
 /** Saatsonde Stufe 2: Faktor auf die Sondenkosten. */
 export const LIGHT_PROBE = 0.5;
+/** Antrieb (#26): Sondengeschwindigkeit (c) je Antriebsstufe 0…4, Faktor der Bremsen, Faktor je Düsen-Schritt, Plus je Triebwerk-Schritt. */
+export const DRIVE_V = [0.2, 0.2, 0.2, 0.25, 0.3], BRAKE = 0.5, NOZZLE_F = 0.9, ENGINE_DV = 0.01;
 
 /** Ferne Fronten starten Sonden nur bis zu diesem Verlustrisiko (feste Regel, #6). */
 export const FRONT_RISK_MAX = 0.08;

@@ -22,7 +22,7 @@ import { dist } from './util.js';
 /** Sternklassen, bei denen der Bot ein Kraftwerk als Saatpaket schickt. */
 const BRIGHT = Object.keys(CLASSES).filter(k => CLASSES[k].e >= CLASSES.G.e);
 /** Reihenfolge, in der der Bot forscht. */
-const PROJECT_ORDER = ['scan', 'seed'];
+const PROJECT_ORDER = ['scan', 'seed', 'drive', 'nozzle', 'engine'];
 
 /** Anzahl Gebäude k im System, mitgezählt Bauaufträge in Arbeit und in Warteschlangen. */
 const planned = (sys, k) => sys.b.filter(b => b.k === k).length
@@ -79,7 +79,8 @@ export function createBot(onDecision = () => {}) {
     }
     for (const p of PROJECT_ORDER) if (research(p) === '') { onDecision('research'); break; }
     if (!sys.pq && sys.pj === null && !sys.ready && sys.b.some(b => b.k === 'werft') && sys.m >= probeCost() && orderProbe() === '') onDecision('probe');
-    if (sys.ready) {
+    // fertige Instrumente (#26) brauchen die nächste fertige Sonde: dann keine Siedlersonde starten
+    if (sys.ready && !(sys.rj && sys.rj.left <= 1e-9)) {
       const t = botTarget(S.me);
       if (t >= 0) {
         const c = techOf('seed') >= 1 && sys.m >= fuelCost(S.me, t) + CONS.cost;
