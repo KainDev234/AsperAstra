@@ -437,7 +437,7 @@ test('Testspielstände: erreichen ihre Lage, immer gleich, gültig, auf Pause', 
   for (const [k, sc] of Object.entries(SC.SCENARIOS)) {
     assert.ok(SC.loadScenario(k), k);
     const S = st.S, a = JSON.stringify(S);
-    assert.equal(S.seed, SC.SCENARIO_SEED); assert.equal(S.speed, 0);
+    assert.equal(S.seed, sc.seed ?? SC.SCENARIO_SEED); assert.equal(S.speed, 0);
     assert.ok(sv.validate(clone(S)), k);
     if (k !== 'overflow') assert.ok(sc.done(), k + ': Lage erreicht');
     SC.loadScenario(k); assert.equal(JSON.stringify(st.S), a, k + ': deterministisch');
@@ -539,7 +539,7 @@ test('Sicht (#13): Sonden erst sichtbar, wenn das Licht vom Start da ist', () =>
   // eine Sonde startet jetzt an einem Stern 5+ Lj von Sol entfernt (ihr Flug dauert länger als das Licht)
   const t = sim.stars().slice(1).find(s => U.dist(s, sim.star(0)) > 5), to = sim.stars().find(s => s.i && s !== t);
   const d = U.dist(t, sim.star(0)), fly = U.dist(t, to) / D.PROBE.v;
-  S.probes.push({ id: S.nextId++, from: t.i, to: to.i, at: S.year + fly, seed: 'mine', two: false, risk: 0 });
+  S.probes.push({ id: S.nextId++, from: t.i, to: to.i, at: S.year + fly, seed: 'mine', two: false, c: false, risk: 0, v: D.PROBE.v, r: null });
   assert.equal(VW.probesSeen().length, 0, 'noch nicht sichtbar');
   S.year += d - .1; assert.equal(VW.probesSeen().length, 0, 'kurz vorher noch nicht');
   S.year += .2; assert.equal(VW.probesSeen().length, 1, 'nach der Lichtlaufzeit sichtbar');
@@ -835,6 +835,126 @@ test('Forschung bedienen (#24): Laborleiste, Blatt, Start und Abbruch, Fernerkun
   ui.act(`launch:${far.i}:mine:c`);
   assert.equal(S.probes[0].c, true);
   assert.equal(U2.cons, false, 'Schalter nach dem Start zurück');
+});
+
+// ---------- Antrieb (#26) ----------
+
+test('Antrieb: Bremsen, Düsen und Lichtsegel senken den Treibstoff, Triebwerk und Stufen heben das Tempo', () => {
+  sim.newGame(51); const S = st.S;
+  const near = c => sim.stars().find(x => x.i && x.cls === c);
+  const g = near('G') || near('F'), m = near('M'), base = x => D.PROBE.fuel * U.dist(sim.star(0), x);
+  assert.equal(sim.fuelCost(0, m.i), Math.round(base(m)));
+  S.tech.drive = 1;
+  assert.equal(sim.fuelCost(0, g.i), Math.round(base(g) * D.BRAKE), 'Magnetbremse zu hellen Sternen');
+  assert.equal(sim.fuelCost(0, m.i), Math.round(base(m)), 'nicht zu Roten Zwergen');
+  S.tech.drive = 2; S.tech.nozzle = 2;
+  assert.equal(sim.fuelCost(0, m.i), Math.round(base(m) * D.BRAKE * D.NOZZLE_F ** 2));
+  S.tech.drive = 4;
+  assert.equal(sim.fuelCost(0, m.i), 0, 'Lichtsegel');
+  assert.equal(sim.probeSpeed(), 0.3);
+  S.tech.drive = 0; S.tech.engine = 3;
+  assert.ok(Math.abs(sim.probeSpeed() - 0.23) < 1e-9);
+  // Deckel: Düsen 3 je Antriebsstufe, Triebwerk 4 je Abschnitt, nach dem Lichtsegel nichts mehr
+  assert.equal(sim.stageCap('nozzle'), 3); assert.equal(sim.stageCap('engine'), 4);
+  S.tech.drive = 2; assert.equal(sim.stageCap('nozzle'), 9);
+  S.tech.drive = 4; assert.equal(sim.stageCap('engine'), 0); assert.equal(sim.stageCap('nozzle'), 2);
+  // Gasriesen-Tanken beginnt beim Triebwerk einen neuen Abschnitt; Feinschliff zählt einen Schritt weiter
+  S.tech = { drive: 2, engine: 4 };
+  S.mail.push({ at: S.year, k: 'tech', s: 0, d: { p: 'drive', n: 3 } }, { at: S.year, k: 'tech', s: 0, d: { p: 'nozzle', n: 7 } });
+  sim.step(1 / 12);
+  assert.equal(sim.techOf('drive'), 3); assert.equal(sim.techOf('engine'), 0); assert.equal(sim.techOf('nozzle'), 1);
+  assert.ok(Math.abs(sim.probeSpeed() - 0.25) < 1e-9);
+  assert.ok(sv.validate(clone(S)));
+  // Eine Sonde fliegt mit dem Tempo beim Start
+  const sol = sim.sysOf(0); sol.ready = 1; sol.m = 500;
+  const to = sim.frontTarget(0);
+  assert.equal(sim.launchProbe(to, 'mine'), '');
+  assert.equal(S.probes[0].v, 0.25);
+  assert.ok(Math.abs(S.probes[0].at - S.year - U.dist(sim.star(0), sim.star(to)) / 0.25) < 1e-9);
+});
+
+test('Antrieb: Magnetbremse braucht Werkstatt und Sternwarte, misst aus der Ferne einen hellen Stern', () => {
+  const sol = labGame(52, 'shop');
+  assert.equal(sim.canResearch('drive'), 'need');
+  sol.b.push({ k: 'obs', o: 1, lv: 1 });
+  const st0 = D.PROJECTS.drive.st[0], t = sim.remoteTarget(0, st0.range, st0.cls);
+  if (t === null) { assert.equal(sim.canResearch('drive'), 'ziel'); return; }
+  assert.ok(['G', 'F', 'A'].includes(sim.star(t).cls));
+  assert.equal(sim.research('drive'), '');
+  until(() => sim.techOf('drive') >= 1);
+  assert.equal(sim.techOf('drive'), 1);
+});
+
+test('Antrieb: Messung vor Ort per Instrumentensonde – Labor, Warten auf die Sonde, Flug, Ergebnis mit c', () => {
+  const sol = labGame(53, 'shop'), S = st.S;
+  sol.b.push({ k: 'werft', o: 4, lv: 1 });
+  S.tech.drive = 1;
+  assert.equal(sim.canResearch('drive'), '', 'Sol ist kein Roter Zwerg: Sonde nötig, Werft da');
+  const t = sim.siteTarget(0, 'M');
+  assert.equal(sim.star(t).cls, 'M');
+  assert.equal(sim.research('drive'), '');
+  const work = D.PROJECTS.drive.st[1].work;
+  until(() => sol.rj.left <= 0, work + 1);
+  assert.ok(sol.rj && sol.rj.left <= 0, 'Instrumente fertig, wartet auf eine Sonde');
+  sim.step(1 / 12);
+  assert.ok(sol.rj, 'ohne fertige Sonde bleibt sie stehen');
+  sol.ready = 1;
+  const m0 = sol.m, fuel = sim.fuelCost(0, t);
+  sim.step(1 / 12);
+  assert.equal(sol.rj, null);
+  assert.equal(S.probes.length, 1);
+  const p = S.probes[0];
+  assert.equal(p.seed, 'inst'); assert.deepEqual(p.r, { p: 'drive', n: 2 }); assert.equal(p.to, t);
+  assert.ok(Math.abs(m0 - sol.m - fuel) < 1, 'Treibstoff bezahlt');
+  assert.equal(sim.canResearch('drive'), 'unterwegs');
+  assert.ok(sv.validate(clone(S)));
+  p.risk = 0;
+  const y0 = S.year, d = U.dist(sim.star(0), sim.star(t));
+  until(() => sim.techOf('drive') >= 2, 200);
+  assert.equal(sim.techOf('drive'), 2);
+  assert.ok(S.year - y0 >= d / p.v + d - 0.2, 'Flug plus Lichtweg zurück');
+  assert.ok(!sim.sysOf(t), 'die Instrumentensonde gründet kein System');
+});
+
+test('Antrieb: eigenes System am passenden Stern forscht vor Ort bzw. liefert die Messdaten, ohne Sonde', () => {
+  labGame(54, 'shop'); const S = st.S;
+  S.tech.drive = 1;
+  const m = sim.stars().find(x => x.cls === 'M');
+  S.sys.push({ s: m.i, m: 500, b: [{ k: 'shop', o: 0, lv: 1 }, { k: 'power', o: 0, lv: 1 }], pq: 0, pj: null, ready: 0, rj: null });
+  S.units.push({ id: S.nextId++, k: 'copy', s: m.i, o: 0, lv: 1, q: [], job: null, mv: null });
+  S.known.push(m.i); S.me = m.i;
+  assert.equal(sim.research('drive'), '');
+  until(() => sim.techOf('drive') >= 2);
+  assert.equal(sim.techOf('drive'), 2);
+  assert.equal(S.probes.length, 0);
+  // Sol forscht weiter, das System am Roten Zwerg liefert die Messdaten: Ergebnis um den Abstand später, ohne Sonde
+  S.me = 0;
+  sim.sysOf(0).b.push({ k: 'werft', o: 4, lv: 1 });
+  S.tech.drive = 1;
+  const y0 = S.year, d = U.dist(sim.star(0), m);
+  assert.equal(sim.research('drive'), '');
+  until(() => sim.techOf('drive') >= 2, 100);
+  assert.equal(sim.techOf('drive'), 2);
+  assert.ok(!S.probes.some(p => p.seed === 'inst'), 'keine Instrumentensonde');
+  assert.ok(S.year - y0 >= D.PROJECTS.drive.st[1].work + d - 0.2, 'Daten reisen vom Messort');
+});
+
+test('Spielstand 4: Migration von 3, Prüfung von Tempo und Instrumentensonde', () => {
+  const sol = labGame(55, 'shop'), S = st.S;
+  sol.b.push({ k: 'werft', o: 4, lv: 1 }); sol.ready = 2;
+  sim.launchProbe(sim.frontTarget(0), 'mine');
+  const ok = clone(S);
+  assert.ok(sv.validate(ok));
+  const old = clone(ok); old.v = 3; old.probes.forEach(p => { delete p.v; delete p.r; });
+  const mg = sv.migrate(old);
+  assert.ok(sv.validate(mg)); assert.equal(mg.probes[0].v, D.PROBE.v); assert.equal(mg.probes[0].r, null);
+  const bad = [
+    d => { d.probes[0].v = 0; }, d => { d.probes[0].seed = 'inst'; }, d => { d.probes[0].r = { p: 'drive', n: 2 }; },
+    d => { d.probes[0].seed = 'inst'; d.probes[0].r = { p: 'drive', n: 9 }; }, d => { d.tech = { nozzle: 13 }; }, d => { d.tech = { engine: 5 }; },
+  ];
+  for (const fn of bad) { const d = clone(ok); fn(d); assert.equal(sv.validate(d), false, fn.toString()); }
+  const good = clone(ok); good.probes[0].seed = 'inst'; good.probes[0].r = { p: 'drive', n: 2 }; good.tech = { nozzle: 12 };
+  assert.ok(sv.validate(good));
 });
 
 test('Versionen: index.html nennt für Stylesheet und jedes Modul die aktuelle Prüfsumme (sonst: node tools/version.mjs)', async () => {

@@ -34,6 +34,9 @@ Rechnerspezifisches (IP-Adressen, lokale Netzwerk-/VPN-Details) gehört NICHT hi
   an einem Projekt zur Zeit (`sys.rj`), getragen von seinen Laboren (Sternwarte `obs`, Werkstatt `shop`; das Profil
   ist die Gebäudeart). Das Ergebnis reist mit c zum Spieler und gilt ab Ankunft überall (`S.tech`); die
   Fernerkundung füllt `S.scan` (Reichtum und Orte, nie die Besonderheit).
+  Antrieb (#26): Stufen senken Treibstoff bzw. heben das Tempo der Sonden (`fuelCost`, `probeSpeed`); Messungen vor Ort
+  laufen hier, mit Daten eines eigenen Systems dort oder per Instrumentensonde (`seed: 'inst'`). Feinschliff
+  (Düsen, Triebwerk) sind wiederholbare, durch den Antrieb gedeckelte Schritte (`data.stageOf`, `sim.stageCap`).
 
 - **Oberfläche** (#13): eine zoombare Karte mit Stufen (Galaxie, System; Ort folgt) statt Reitern, gezeichnet als
   SVG in Bildschirmkoordinaten (`map.js`), Gesten in `input.js`. In der Karte **keine `<text>`-Elemente**: Zahlen

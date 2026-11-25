@@ -15,7 +15,7 @@
  * und nur bei Erfolg übernommen. Sonst bleibt das laufende Spiel unverändert.
  */
 import { S, setState } from './state.js';
-import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES, BUILD, ORTE, PROBE, QUEUE_MAX, PROJECTS } from './data.js';
+import { SAVE_KEY, SAVE_VERSION, START_YEAR, TEMPO, LOG_MAX, LOG_TEXT_MAX, LOG_CLASSES, BUILD, ORTE, PROBE, QUEUE_MAX, PROJECTS, stageMax } from './data.js';
 import { hooks, itemValid, WAITS } from './sim.js';
 import { galaxy } from './galaxy.js';
 import { SEED_RANGE } from './util.js';
@@ -37,6 +37,8 @@ const MIGRATIONS = {
     sys: d.sys.map(y => ({ ...y, rj: null })),
     probes: d.probes.map(p => ({ ...p, c: false })),
   }),
+  // 3 → 4 (#26): Antrieb – fliegende Sonden mit dem alten Tempo, keine Instrumentensonden
+  3: d => ({ ...d, v: 4, probes: d.probes.map(p => ({ ...p, v: PROBE.v, r: null })) }),
 };
 
 /**
@@ -88,7 +90,7 @@ const validBuilding = (b, st) => obj(b) && only(b, ['k', 'o', 'lv']) && buildKey
 /** Schlüssel in PROJECTS. */
 const projKey = p => str(p) && Object.prototype.hasOwnProperty.call(PROJECTS, p);
 /** Stufe n von Projekt p existiert. */
-const stageOk = (p, n) => projKey(p) && int(n, 1, PROJECTS[p].st.length);
+const stageOk = (p, n) => projKey(p) && int(n, 1, stageMax(p));
 /** Laufende Forschung { p, n, left } (left großzügig: Fernmessung wächst mit dem Abstand). */
 const validRj = r => r === null || (obj(r) && only(r, ['p', 'n', 'left']) && stageOk(r.p, r.n) && within(r.left, -1, 1000));
 
@@ -121,11 +123,12 @@ function validUnit(u, stars) {
   return u.wait === undefined || WAITS.includes(u.wait);
 }
 
-/** Sonde im Flug { id, from, to, at, seed, two, c, risk }. */
-const validProbe = (p, stars, yr) => obj(p) && only(p, ['id', 'from', 'to', 'at', 'seed', 'two', 'c', 'risk'])
+/** Sonde im Flug { id, from, to, at, seed, two, c, risk, v, r }; r = { p, n } genau bei einer Instrumentensonde. */
+const validProbe = (p, stars, yr) => obj(p) && only(p, ['id', 'from', 'to', 'at', 'seed', 'two', 'c', 'risk', 'v', 'r'])
   && int(p.id, 1, 1e9) && int(p.from, 0, stars.length - 1) && int(p.to, 0, stars.length - 1) && p.from !== p.to
-  && within(p.at, yr - 1, YEAR_MAX) && ['mine', 'power'].includes(p.seed) && typeof p.two === 'boolean'
-  && typeof p.c === 'boolean' && within(p.risk, 0, 1);
+  && within(p.at, yr - 1, YEAR_MAX) && ['mine', 'power', 'inst'].includes(p.seed) && typeof p.two === 'boolean'
+  && typeof p.c === 'boolean' && within(p.risk, 0, 1) && within(p.v, 0.05, 1)
+  && (p.seed === 'inst' ? obj(p.r) && only(p.r, ['p', 'n']) && stageOk(p.r.p, p.r.n) : p.r === null);
 
 /** Liste verschiedener Sterne (Fernerkundung). */
 const starList = (a, stars) => Array.isArray(a) && a.length <= stars.length && a.every(s => int(s, 0, stars.length - 1)) && new Set(a).size === a.length;

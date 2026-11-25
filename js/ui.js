@@ -9,7 +9,7 @@
 import { S, UI } from './state.js';
 import { TEMPO, CLASSES, ORTE, PROBE, BUILD, CONS } from './data.js';
 import { $, esc, fmtDate, seedFromText, dist } from './util.js';
-import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, targetFree, launchProbe, jump, techOf } from './sim.js';
+import { newGame, log, star, sysOf, energy, income, launchRisk, fuelCost, targetFree, launchProbe, jump, techOf, probeSpeed } from './sim.js';
 import { setSpeed, setTempo } from './clock.js';
 import { save, exportFile, importText, hasBackup, exportBackup, deleteBackup } from './save.js';
 import { SCENARIOS, loadScenario } from './scenarios.js';
@@ -210,7 +210,7 @@ function starHtml(s) {
   else if (s !== v.i) {
     // Treibstoff neben dem eigenen Lager („8/13 M“, rot wenn zu wenig); während eines Sprungs nur die Kosten
     const fuel = fuelCost(v.i, s) + (UI.cons && techOf('seed') >= 1 ? CONS.cost : 0), me = S.me !== null && sysOf(S.me);
-    h += `<div class="facts"><span>${d.toFixed(1)} Lj</span><span>${(d / PROBE.v).toFixed(0)} J Flug</span>`
+    h += `<div class="facts"><span>${d.toFixed(1)} Lj</span><span>${(d / probeSpeed()).toFixed(0)} J Flug</span>`
       + (me ? `<span class="${me.m < fuel ? 'warn' : ''}">${Math.floor(me.m)}/${fuel} M</span>` : `<span>${fuel} M</span>`) + `<span>${targetFree(s) ? Math.round(launchRisk(s) * 100) + ' % Verlust' : 'Sonde unterwegs'}</span></div>`;
   }
   if (isScanned(s)) {

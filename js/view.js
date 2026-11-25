@@ -4,7 +4,6 @@
  * nie den echten Stand ferner Systeme. Ohne DOM, damit in Node testbar.
  */
 import { S } from './state.js';
-import { PROBE } from './data.js';
 import { dist } from './util.js';
 import { star, sysOf } from './sim.js';
 
@@ -49,7 +48,7 @@ export function frontList() {
 }
 
 /** Startjahr einer Sonde (aus Ankunft und Flugzeit). */
-const launchYear = p => p.at - dist(star(p.from), star(p.to)) / PROBE.v;
+const launchYear = p => p.at - dist(star(p.from), star(p.to)) / p.v;
 
 /**
  * Sonden im Flug, deren Start der Spieler schon sehen kann: Das Licht vom Startsystem ist bei ihm angekommen.

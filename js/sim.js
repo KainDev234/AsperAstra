@@ -6,14 +6,15 @@
  *     Minen fördern, Kraftwerke liefern Energie, reicht sie nicht, laufen alle Verbraucher anteilig langsamer.
  *   - Gebaut wird nur, wo ein Bauer ist (S.units): die Kopie (eine je System) oder Konstruktoren. Jeder Bauer
  *     arbeitet seine Warteschlange ab, einen Auftrag zur Zeit, an seinem Ort; Reisen zwischen Orten dauern.
- *   - Werften bauen Sonden; eine Sonde fliegt mit PROBE.v c zu einem Stern, kann unterwegs verloren gehen und
+ *   - Werften bauen Sonden; eine Sonde fliegt mit probeSpeed() c zu einem Stern, kann unterwegs verloren gehen und
  *     wird bei Ankunft eine neue Kopie (Saatpaket: Gebäude + Materie).
  *   - Der Spieler steuert genau ein System (S.me). Alle anderen sind ferne Fronten und bauen nach einer festen
  *     Regel (planFront). Ihre Berichte und Nachrichten erreichen den Spieler mit Lichtgeschwindigkeit (S.mail).
  *   - Sprung: Haben Start und Ziel einen Sender, wechselt der Spieler als Signal in die Kopie am Ziel.
  *   - Forschung (#22): Ein System forscht an einem Projekt zur Zeit (sys.rj), getragen von seinen Laboren. Das
  *     Ergebnis reist mit c zum Spieler und gilt ab Ankunft überall (S.tech). Fernerkundung macht Reichtum und Orte
- *     fremder Sterne bekannt (S.scan), die Saatsonde ändert Saatpaket und Sondenkosten.
+ *     fremder Sterne bekannt (S.scan), die Saatsonde ändert Saatpaket und Sondenkosten, der Antrieb (#26)
+ *     Treibstoff und Tempo der Sonden; Messungen vor Ort fliegen als Instrumentensonde.
  * Die Galaxie selbst ist fest durch den Seed bestimmt (galaxy.js) und nicht im Spielstand.
  */
 import { S, setState } from './state.js';
@@ -21,7 +22,7 @@ import { rngStep, rngSeed, SEED_RANGE, dist } from './util.js';
 import {
   SAVE_VERSION, START_YEAR, TEMPO_DEFAULT, LOG_MAX, CLASSES, BUILD, MINE_RATE, BELT_MULT, RICH_BELT_MULT,
   PLANET_POWER, GAS_BONUS, POWER_UP_MULT, RAZE_BACK, QUEUE_MAX, CONS, MOVE_T, PROBE, FRONT_RISK_MAX,
-  START_MATTER, EARTH, ORTE, PROJECTS, SCAN_R, LIGHT_PROBE,
+  START_MATTER, EARTH, ORTE, PROJECTS, SCAN_R, LIGHT_PROBE, stageOf, DRIVE_V, BRAKE, NOZZLE_F, ENGINE_DV,
 } from './data.js';
 import { galaxy } from './galaxy.js';
 
@@ -319,8 +320,20 @@ export function orderProbe() {
  */
 export const launchRisk = to => Math.min(1, PROBE.risk * S.probes.filter(p => dist(star(p.to), star(to)) <= PROBE.riskR).length);
 
-/** Treibstoff für den Flug von Stern a nach b (M), beim Start fällig (#11). */
-export const fuelCost = (a, b) => Math.round(PROBE.fuel * dist(star(a), star(b)));
+/**
+ * Anteil des Treibstoffs zu Ziel b nach dem Antrieb (#26): Lichtsegel braucht keinen; sonst Düsen-Schritte je
+ * NOZZLE_F, die Magnetbremse halbiert zu G/F/A-Sternen (Stufe 1) bzw. zu allen (Stufe 2).
+ */
+export function fuelFactor(b) {
+  const d = techOf('drive');
+  if (d >= 4) return 0;
+  const bright = ['G', 'F', 'A'].includes(star(b).cls);
+  return NOZZLE_F ** techOf('nozzle') * (d >= 2 || (d >= 1 && bright) ? BRAKE : 1);
+}
+/** Treibstoff für den Flug von Stern a nach b (M), beim Start fällig (#11, Antrieb #26). */
+export const fuelCost = (a, b) => Math.round(PROBE.fuel * dist(star(a), star(b)) * fuelFactor(b));
+/** Tempo einer jetzt startenden Sonde (Anteil von c): Antriebsstufe plus Triebwerk-Schritte (#26). */
+export const probeSpeed = () => DRIVE_V[techOf('drive')] + ENGINE_DV * techOf('engine');
 
 /** Ist Stern t ein mögliches Sondenziel (kein System, keine Sonde dorthin unterwegs)? */
 export const targetFree = t => !sysOf(t) && !S.probes.some(p => p.to === t);
@@ -330,11 +343,23 @@ export const targetFree = t => !sysOf(t) && !S.probes.some(p => p.to === t);
  * Bord (Saatsonde Stufe 1, kostet zusätzlich CONS.cost).
  */
 function launch(sys, to, seed, c = false) {
-  const risk = launchRisk(to), fuel = fuelCost(sys.s, to) + (c ? CONS.cost : 0);
-  const from = star(sys.s), dest = star(to);
+  const risk = launchRisk(to), fuel = fuelCost(sys.s, to) + (c ? CONS.cost : 0), v = probeSpeed();
+  const from = star(sys.s), dest = star(to), t = dist(from, dest) / v;
   sys.ready--; sys.m = Math.max(0, sys.m - fuel);
-  S.probes.push({ id: S.nextId++, from: sys.s, to, at: S.year + dist(from, dest) / PROBE.v, seed, two: sys.b.some(b => b.k === 'werft' && b.lv > 1), c, risk });
-  if (S.me === sys.s) log(`Sonde startet nach ${dest.name}${c ? ' mit Konstruktor' : ''} (${(dist(from, dest) / PROBE.v).toFixed(0)} Jahre, ${fuel} M, Verlustrisiko ${Math.round(risk * 100)} %).`);
+  S.probes.push({ id: S.nextId++, from: sys.s, to, at: S.year + t, seed, two: sys.b.some(b => b.k === 'werft' && b.lv > 1), c, risk, v, r: null });
+  if (S.me === sys.s) log(`Sonde startet nach ${dest.name}${c ? ' mit Konstruktor' : ''} (${t.toFixed(0)} Jahre, ${fuel} M, Verlustrisiko ${Math.round(risk * 100)} %).`);
+}
+
+/**
+ * Startet aus System sys eine Instrumentensonde (#26) für Forschungsstufe r = { p, n } zu Stern to: eine fertige
+ * Sonde aus der Werft plus Treibstoff. Sie gründet kein System, sondern misst bei Ankunft und funkt das Ergebnis.
+ */
+function launchInst(sys, to, r) {
+  const risk = launchRisk(to), fuel = fuelCost(sys.s, to), v = probeSpeed();
+  const dest = star(to), t = dist(star(sys.s), dest) / v;
+  sys.ready--; sys.m = Math.max(0, sys.m - fuel);
+  S.probes.push({ id: S.nextId++, from: sys.s, to, at: S.year + t, seed: 'inst', two: false, c: false, risk, v, r });
+  if (S.me === sys.s) log(`Instrumentensonde startet nach ${dest.name} (${t.toFixed(0)} Jahre, ${fuel} M, Verlustrisiko ${Math.round(risk * 100)} %).`);
 }
 
 /**
@@ -429,12 +454,15 @@ export const techOf = p => S.tech[p] || 0;
 /** Forschungsleistung der Labore der Art lab in einem System (Stufe I zählt 1, Stufe II zählt 2). */
 export const labPower = (sys, lab) => sys.b.reduce((a, b) => a + (b.k === lab ? b.lv : 0), 0);
 
-/** Ziel einer Fernmessung von Stern s aus: der nächste Stern ohne eigenes System bis range Lj, sonst null. */
-export function remoteTarget(s, range) {
+/**
+ * Ziel einer Fernmessung von Stern s aus: der nächste Stern ohne eigenes System bis range Lj (nur Klassen cls,
+ * falls angegeben), sonst null.
+ */
+export function remoteTarget(s, range, cls = null) {
   const here = star(s);
   let best = null, bd = Infinity;
   for (const t of stars()) {
-    if (t.i === s || sysOf(t.i)) continue;
+    if (t.i === s || sysOf(t.i) || (cls && !cls.includes(t.cls))) continue;
     const d = dist(here, t);
     if (d <= range + EPS && d < bd) { bd = d; best = t.i; }
   }
@@ -456,29 +484,80 @@ export function pairPartner(s, lab, minD) {
 /** Arbeit (Labor-Jahre) einer Stufe st im System s; null = nicht möglich (kein Ziel für die Fernmessung). */
 export function stageWork(st, s) {
   if (st.way !== 'remote') return st.work;
-  const t = remoteTarget(s, st.range);
+  const t = remoteTarget(s, st.range, st.cls);
   return t === null ? null : st.work + st.perLj * dist(star(s), star(t));
 }
 
 /**
+ * Erfüllt Stern s die Bedingung site einer Messung vor Ort (#26)? Klassen sieht jeder; eine Besonderheit nur, wer
+ * dort ein System hat (die Fernerkundung verrät sie nicht).
+ */
+export function siteOk(site, s) {
+  const t = star(s);
+  if (site === 'M') return t.cls === 'M';
+  if (site === 'FA') return t.cls === 'F' || t.cls === 'A';
+  return S.known.includes(s) && t.spec === site;
+}
+/** Nächstes andere eigene System an einem Stern, der site erfüllt (liefert Messdaten vor Ort), sonst null. */
+export function siteSys(s, site) {
+  const here = star(s);
+  let best = null, bd = Infinity;
+  for (const y of S.sys) {
+    if (y.s === s || !siteOk(site, y.s)) continue;
+    const d = dist(here, star(y.s));
+    if (d < bd) { bd = d; best = y.s; }
+  }
+  return best;
+}
+/** Ziel einer Instrumentensonde von Stern s aus: der nächste freie Stern, der site erfüllt, sonst null. */
+export function siteTarget(s, site) {
+  const here = star(s);
+  let best = null, bd = Infinity;
+  for (const t of stars()) {
+    if (t.i === s || !targetFree(t.i) || !siteOk(site, t.i)) continue;
+    const d = dist(here, t);
+    if (d < bd) { bd = d; best = t.i; }
+  }
+  return best;
+}
+
+/**
+ * Wie viele Stufen von Projekt p es zurzeit gibt. Feinschliff ist gedeckelt durch den Antrieb (#26): Düsen per
+ * Schritte je erreichter Antriebsstufe (mit dem Lichtsegel keine mehr), Triebwerk per Schritte je Abschnitt
+ * (zählt ab Gasriesen-Tanken und Lichtsegel neu; nach dem Lichtsegel keine mehr).
+ */
+export function stageCap(p) {
+  const P = PROJECTS[p], d = techOf('drive');
+  if (!P.rep) return P.st.length;
+  if (p === 'nozzle') return d >= 4 ? techOf(p) : P.rep.per * (d + 1);
+  return d >= 4 ? 0 : P.rep.per;
+}
+
+/**
  * Kann die aktive Front die nächste Stufe von Projekt p beginnen?
- * @returns {''|'fern'|'projekt'|'fertig'|'läuft'|'unterwegs'|'labor'|'ziel'|'partner'|'materie'}
- *   läuft = dieses System forscht schon bzw. das Projekt läuft anderswo; unterwegs = ein Ergebnis ist noch auf
- *   dem Weg zum Spieler; labor = kein Labor des Profils; ziel = kein Stern für die Fernmessung in Reichweite;
- *   partner = kein zweites System für die Paarmessung
+ * @returns {''|'fern'|'projekt'|'fertig'|'läuft'|'unterwegs'|'labor'|'need'|'ziel'|'partner'|'werft'|'materie'}
+ *   läuft = dieses System forscht schon bzw. das Projekt läuft anderswo; unterwegs = ein Ergebnis (oder eine
+ *   Instrumentensonde) ist noch auf dem Weg; labor = kein Labor des Profils; need = zusätzliches Gebäude fehlt;
+ *   ziel = kein Stern für die Fernmessung in Reichweite bzw. keiner für die Instrumentensonde; partner = kein
+ *   zweites System für die Paarmessung; werft = Instrumentensonde braucht eine Werft
  */
 export function canResearch(p) {
   const sys = S.me !== null && sysOf(S.me);
   if (!sys) return 'fern';
   if (!Object.prototype.hasOwnProperty.call(PROJECTS, p)) return 'projekt';
   const n = techOf(p);
-  if (n >= PROJECTS[p].st.length) return 'fertig';
+  if (n >= stageCap(p)) return 'fertig';
   if (sys.rj || S.sys.some(y => y.rj && y.rj.p === p)) return 'läuft';
-  if (S.mail.some(x => x.k === 'tech' && x.d.p === p)) return 'unterwegs';
-  const st = PROJECTS[p].st[n];
+  if (S.mail.some(x => x.k === 'tech' && x.d.p === p) || S.probes.some(x => x.r && x.r.p === p)) return 'unterwegs';
+  const st = stageOf(p, n + 1);
   if (!labPower(sys, st.lab)) return 'labor';
+  if (st.need && !sys.b.some(b => b.k === st.need)) return 'need';
   if (stageWork(st, sys.s) === null) return 'ziel';
   if (st.way === 'pair' && pairPartner(sys.s, st.lab, st.minD) === null) return 'partner';
+  if (st.way === 'site' && !siteOk(st.site, sys.s) && siteSys(sys.s, st.site) === null) {
+    if (!sys.b.some(b => b.k === 'werft')) return 'werft';
+    if (siteTarget(sys.s, st.site) === null) return 'ziel';
+  }
   if (sys.m + EPS < st.cost) return 'materie';
   return '';
 }
@@ -487,10 +566,10 @@ export function canResearch(p) {
 export function research(p) {
   const r = canResearch(p);
   if (r) return r;
-  const sys = sysOf(S.me), n = techOf(p) + 1, st = PROJECTS[p].st[n - 1];
+  const sys = sysOf(S.me), n = techOf(p) + 1, st = stageOf(p, n);
   sys.m = Math.max(0, sys.m - st.cost);
   sys.rj = { p, n, left: stageWork(st, sys.s) };
-  log(`Forschung beginnt: ${PROJECTS[p].n} – ${st.n}.`);
+  log(`Forschung beginnt: ${PROJECTS[p].rep ? st.n : PROJECTS[p].n + ' – ' + st.n}.`);
   return '';
 }
 
@@ -506,29 +585,51 @@ export function stopResearch() {
 /**
  * Fortschritt der Forschung eines Systems über dt Jahre. Fertig: Das Ergebnis reist als Nachricht zum Spieler,
  * bei einer Paarmessung zusätzlich um den Abstand zum Partner verzögert (fehlt der Partner inzwischen, wartet das
- * Projekt fertig gerechnet, bis wieder einer da ist).
+ * Projekt fertig gerechnet, bis wieder einer da ist). Messung vor Ort an einem anderen Stern (#26): Liefert ein
+ * eigenes System dort die Daten, kommt das Ergebnis um dessen Abstand später; sonst warten die fertigen Instrumente
+ * auf eine Sonde aus der Werft und den Treibstoff, dann startet die Instrumentensonde.
  */
 function stepResearch(sys, dt) {
-  const st = PROJECTS[sys.rj.p].st[sys.rj.n - 1];
-  sys.rj.left -= labPower(sys, st.lab) * energy(sys).f * dt;
+  const st = stageOf(sys.rj.p, sys.rj.n);
+  if (sys.rj.left > EPS) sys.rj.left -= labPower(sys, st.lab) * energy(sys).f * dt;
   if (sys.rj.left > EPS) return;
   let extra = 0;
+  if (st.way === 'site' && !siteOk(st.site, sys.s)) {
+    sys.rj.left = 0;
+    const q = siteSys(sys.s, st.site);
+    if (q !== null) extra = dist(star(sys.s), star(q));
+  }
+  if (st.way === 'site' && !siteOk(st.site, sys.s) && !extra) {
+    const t = siteTarget(sys.s, st.site);
+    if (t === null || sys.ready < 1 || sys.m + EPS < fuelCost(sys.s, t)) return;
+    launchInst(sys, t, { p: sys.rj.p, n: sys.rj.n });
+    sys.rj = null;
+    return;
+  }
   if (st.way === 'pair') {
     const q = pairPartner(sys.s, st.lab, st.minD);
     if (q === null) { sys.rj.left = 0; return; }
     extra = dist(star(sys.s), star(q));
   }
   mail('tech', sys.s, { p: sys.rj.p, n: sys.rj.n }, extra);
-  if (S.me === sys.s && extra) log(`${st.n}: Messung fertig, die Daten des Partners sind ${extra.toFixed(0)} Jahre unterwegs.`);
+  if (S.me === sys.s && extra) log(`${st.n}: Messung fertig, die Daten ${st.way === 'pair' ? 'des Partners' : 'vom Messort'} sind ${extra.toFixed(0)} Jahre unterwegs.`);
   sys.rj = null;
 }
 
-/** Ein Forschungsergebnis kommt beim Spieler an: Stufe n von Projekt p gilt ab jetzt überall. */
+/**
+ * Ein Forschungsergebnis kommt beim Spieler an: Stufe n von Projekt p gilt ab jetzt überall. Feinschliff zählt
+ * einen Schritt weiter (höchstens bis zur Deckelung); Gasriesen-Tanken und Lichtsegel beginnen beim Triebwerk
+ * einen neuen Abschnitt.
+ */
 function learn(p, n, from) {
-  if (techOf(p) >= n) return;
+  if (PROJECTS[p].rep) {
+    if (techOf(p) >= stageCap(p)) return;
+    n = techOf(p) + 1;
+  } else if (techOf(p) >= n) return;
   S.tech[p] = n;
-  const st = PROJECTS[p].st[n - 1];
-  log(`Forschung fertig: ${PROJECTS[p].n} – ${st.n} (${from}).`, 'good'); event(`Forschung fertig: ${st.n}`);
+  if (p === 'drive' && n >= 3) delete S.tech.engine;
+  const st = stageOf(p, n);
+  log(`Forschung fertig: ${PROJECTS[p].rep ? st.n : PROJECTS[p].n + ' – ' + st.n} (${from}).`, 'good'); event(`Forschung fertig: ${st.n}`);
   if (p === 'scan' && n >= 2) addScan(stars().map(t => t.i));
 }
 
@@ -563,10 +664,12 @@ function mail(k, s, d, extra = 0) {
 
 /**
  * Eine Sonde kommt an: mit ihrem Verlustrisiko verloren, sonst neues System mit Saatpaket (Gebäude am besten
- * Ort, PROBE.seedM Materie) und der Sonde als Kopie. Die Nachricht reist mit c zum Spieler.
+ * Ort, PROBE.seedM Materie) und der Sonde als Kopie. Eine Instrumentensonde (#26) misst nur und funkt ihr
+ * Ergebnis. Die Nachricht reist mit c zum Spieler.
  */
 function arrive(p) {
   if (rand() < p.risk) { mail('lost', p.to); return; }
+  if (p.r) { mail('tech', p.to, { ...p.r }); return; }
   const sys = { s: p.to, m: PROBE.seedM, b: [], pq: 0, pj: null, ready: 0, rj: null };
   S.sys.push(sys);
   let at = 0;
