@@ -86,21 +86,26 @@ export const PROBE = { cost: 40, time: 1, v: 0.2, seedM: 15, risk: 0.04, riskR: 
  * Start (cost), Arbeit in Labor-Jahren (work). Fernmessung: Ziel ist der nächste fremde Stern bis range Lj, die
  * Arbeit wächst um perLj je Lj Abstand. Paar: ein anderes eigenes System mit demselben Labor, mindestens minD Lj
  * entfernt; das Ergebnis kommt zusätzlich um dessen Abstand verzögert (seine Daten reisen mit c).
- * Die Wirkungen stehen in sim.js (techOf); die Zahlen sind Startwerte für den Bot.
+ * fx: Wirkung in einer Zeile fürs Forschungsblatt. Die Wirkungen selbst stehen in sim.js (techOf); die Zahlen sind
+ * Startwerte für den Bot.
  */
 export const PROJECTS = {
   scan: {
     n: 'Fernerkundung',
     st: [
-      { n: 'Fernmessung', lab: 'obs', way: 'remote', cost: 0, work: 2, range: 10, perLj: 0.5 },
-      { n: 'Interferometrie', lab: 'obs', way: 'pair', cost: 120, work: 4, minD: 15 },
+      { n: 'Fernmessung', lab: 'obs', way: 'remote', cost: 0, work: 2, range: 10, perLj: 0.5,
+        fx: 'Sternwarten erkennen Reichtum und Orte im Umkreis von 8 Lj' },
+      { n: 'Interferometrie', lab: 'obs', way: 'pair', cost: 120, work: 4, minD: 15,
+        fx: 'Reichtum und Orte der ganzen Galaxie' },
     ],
   },
   seed: {
     n: 'Saatsonde',
     st: [
-      { n: 'Konstruktor im Saatpaket', lab: 'shop', way: 'lab', cost: 20, work: 4 },
-      { n: 'Leichte Saatsonde', lab: 'shop', way: 'lab', cost: 150, work: 8 },
+      { n: 'Konstruktor im Saatpaket', lab: 'shop', way: 'lab', cost: 20, work: 4,
+        fx: 'Sonden können einen Konstruktor mitnehmen' },
+      { n: 'Leichte Saatsonde', lab: 'shop', way: 'lab', cost: 150, work: 8,
+        fx: 'Sonden kosten die Hälfte' },
     ],
   },
 };

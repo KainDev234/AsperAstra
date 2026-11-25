@@ -3,7 +3,7 @@
  * Übernommen aus Replikator (js/main.js), ohne Karte.
  *
  * Modulübersicht (Abhängigkeiten zeigen nur "nach unten", keine Zyklen):
- *   main.js  → ui.js, input.js, save.js, clock.js, sim.js
+ *   main.js  → ui.js, input.js, save.js, clock.js, sim.js   ortui.js / labui.js → Bauen / Forschung (Blätter)
  *   ui.js    → Oberfläche und Aktionen   save.js  → localStorage, Prüfung fremder Stände
  *   map.js   → zoombare Karte (SVG)      input.js → Gesten auf der Karte   view.js → was der Spieler weiß
  *   icons.js → Piktogramme, Ziffern als Pfade

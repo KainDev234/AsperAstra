@@ -803,6 +803,40 @@ test('Spielstand 3: Migration von 2, Prüfung der Forschungsfelder', () => {
   for (const f of bad) { const d = clone(ok); f(d); assert.equal(sv.validate(d), false, f.toString()); }
 });
 
+test('Forschung bedienen (#24): Laborleiste, Blatt, Start und Abbruch, Fernerkundung im Sternblatt, Konstruktor an Bord', () => {
+  const q = x => document.querySelector(x), U2 = st.UI;
+  labGame(46); ui.restart();
+  const S = st.S, sol = sim.sysOf(0);
+  ui.act('front');
+  assert.ok(q('#head').innerHTML.includes('data-a="lab"'), 'Laborleiste');
+  ui.act('lab');
+  assert.equal(U2.sheet, 'lab');
+  let h = q('#sheet').innerHTML;
+  assert.ok(h.includes('Fernerkundung') && h.includes('data-a="res:scan"') && h.includes('Werkstatt fehlt'));
+  ui.act('res:scan');
+  assert.equal(sol.rj.p, 'scan');
+  assert.ok(q('#sheet').innerHTML.includes('noch ') && q('#head').innerHTML.includes('Fernmessung'));
+  ui.act('resstop'); assert.ok(sol.rj, 'erst nachfragen');
+  ui.act('resstop'); assert.equal(sol.rj, null);
+  // Fernerkundeter Stern: Reichtum und Orte, Besonderheit offen; in der Karte Reichtumspunkte
+  const far = sim.star(sim.frontTarget(0));   // nah, damit er im Bild ist
+  S.scan.push(far.i);
+  ui.act('out'); ui.tapStar(far.i);
+  h = q('#sheet').innerHTML;
+  assert.ok(h.includes('Reichtum') && h.includes('Besonderheit ?') && !h.includes('System ›'));
+  assert.ok(q('#map').innerHTML.includes('class="rich"'));
+  assert.ok(!h.includes('data-a="pcons"'), 'Schalter erst nach Saatsonde I');
+  // Konstruktor an Bord
+  S.tech.seed = 1; sol.b.push({ k: 'werft', o: 4, lv: 1 }); sol.ready = 1;
+  ui.tapStar(far.i);
+  ui.act('pcons');
+  assert.equal(U2.cons, true);
+  assert.ok(q('#sheet').innerHTML.includes(`launch:${far.i}:mine:c`));
+  ui.act(`launch:${far.i}:mine:c`);
+  assert.equal(S.probes[0].c, true);
+  assert.equal(U2.cons, false, 'Schalter nach dem Start zurück');
+});
+
 test('Versionen: index.html nennt für Stylesheet und jedes Modul die aktuelle Prüfsumme (sonst: node tools/version.mjs)', async () => {
   const VS = await import(new URL('../tools/version.mjs', js));
   const html = readFileSync(new URL('../index.html', js), 'utf8');
